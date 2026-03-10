@@ -3,7 +3,7 @@
 Bridge Android Auto navigation from Porsche PCM5 / VW / Audi MH2P to instrument cluster displays.
 
 > **Status:** Beta (v01027) — Testing compatibility across Porsche Cayenne, Macan, Panamera and 911
-
+> **Sponsor** https://ko-fi.com/fifthbro
 ---
 
 ## Overview
@@ -31,7 +31,7 @@ Translates Android Auto DSI navigation events into BAP (Board Access Protocol) m
 
 ## Architecture
 
-`AndroidAutoClusterIntegration` is a single Java class (Java 1.4 compatible — no generics, no enhanced for-each, no StringBuilder) that bridges the Android Auto DSI event stream to the Porsche/Audi instrument cluster BAP navigation protocol.
+`AndroidAutoClusterIntegration` is a single Java class (Java 1.4 compatible) that bridges the Android Auto DSI event stream to the Porsche/Audi instrument cluster BAP navigation protocol.
 
 ### Data Flow
 
@@ -126,16 +126,35 @@ Two parallel log files: **plain** (full road names) and **hashed** (road names, 
 ---
 
 ## Installation
-
+**Based on MH2p Mod Kit** https://lawpaul.github.io/MH2p_SD_ModKit_Site/
 > **Warning:** This modifies Java files on your PCM5/MH2P unit. Only proceed if you understand the risks.
 
 **Prerequisites:**
 - Car with PCM5/MH2P
 - SD card
 - Android Auto phone
+- Android Auto <a href="https://lawpaul.github.io/MH2p_SD_ModKit_Site/">activated </a>
+**Installation:**
+- Download latest release
+- Format SD card as FAT32
+- extract zip file to the root of SD card
+- start vehicle
+- insert the SD card
+- within few seconds, MH2p will reboot
+- update installs automatically
+- when update is done installing, a prompt will say "Please remove update media"
+- remove update media from vehicle
+- MH2p will reboot into normal mode with mods installed/uninstalled
+- Build and deploy instructions: get in touch if you want to try the beta.
 
-Build and deploy instructions: get in touch if you want to try the beta.
+**Build:**
+Edit build script with paths in your environment and run: 
+recompile.sh
+or
+recompile.bat
 
+**Deploy and test:**
+The easiest way is to just scp it to the target if you <a href="https://github.com/fifthBro/mh2p-ssh-access">enbaled ssh access</a>
 ---
 
 ## Configuration
@@ -229,7 +248,21 @@ List of country overrides for when locale cannot be detected from platform servi
 | `name` | string | Human-readable name (informational only) |
 | `rhd` | bool | `true` if vehicles drive on the left (right-hand drive countries) |
 | `imperial` | bool | `true` if distances should be shown in miles/yards |
+---
 
+## Contributing
+			
+This project is the result of extensive reverse-engineering and testing on mh2p. Contributions welcome!
+**Troubleshooting / bug reports**
+- Format a FAT32 SD card
+- Put SD in PCM before turning the ignition on
+- Drive → afterwards when you turn the ignition off → pull SD card → look in the log for event that was wrong → match that event to the same one in the hashed log (time stamps can be useful)
+- Share the hashed logs + expected vs actual cluster behaviour
+**Known limitations Setup**
+- RHD/LHD and metric/imperial still requires testing
+- Roundabouts limited (Waze lacks exit angles so they can be wrong)
+- Data granularity and slow update rate limit accuracy
+- Some glitches are inherent to Android Auto.
 ---
 
 ## Changelog
