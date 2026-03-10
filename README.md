@@ -127,7 +127,9 @@ Two parallel log files: **plain** (full road names) and **hashed** (road names, 
 ---
 
 ## Installation
+
 **Based on MH2p Mod Kit** https://lawpaul.github.io/MH2p_SD_ModKit_Site/
+
 > **Warning:** This modifies Java files on your PCM5/MH2P unit. Only proceed if you understand the risks.
 
 **Prerequisites:**
@@ -135,6 +137,7 @@ Two parallel log files: **plain** (full road names) and **hashed** (road names, 
 - SD card
 - Android Auto phone
 - Android Auto <a href="https://lawpaul.github.io/MH2p_SD_ModKit_Site/">activated </a>
+
 **Installation:**
 - Download latest release
 - Format SD card as FAT32
@@ -254,16 +257,19 @@ List of country overrides for when locale cannot be detected from platform servi
 ## Contributing
 			
 This project is the result of extensive reverse-engineering and testing on mh2p. Contributions welcome!
+
 **Troubleshooting / bug reports**
 - Format a FAT32 SD card
 - Put SD in PCM before turning the ignition on
 - Drive → afterwards when you turn the ignition off → pull SD card → look in the log for event that was wrong → match that event to the same one in the hashed log (time stamps can be useful)
 - Share the hashed logs + expected vs actual cluster behaviour
-**Known limitations Setup**
+
+**Known limitations**
 - RHD/LHD and metric/imperial still requires testing
 - Roundabouts limited (Waze lacks exit angles so they can be wrong)
 - Data granularity and slow update rate limit accuracy
 - Some glitches are inherent to Android Auto.
+
 ---
 
 ## Changelog
