@@ -35,7 +35,7 @@ Translates Android Auto DSI navigation events into BAP (Board Access Protocol) m
 
 ## Architecture
 
-`AndroidAutoClusterIntegration` is a single Java class (Java 1.4 compatible) that bridges the Android Auto DSI event stream to the Porsche/Audi instrument cluster BAP navigation protocol.
+`AndroidAutoClusterIntegration` is a single Java class (Java 1.4 compatible) that bridges the Android Auto DSI event stream to the Porsche instrument cluster BAP navigation protocol.
 
 ### Data Flow
 
