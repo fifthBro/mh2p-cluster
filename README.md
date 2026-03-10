@@ -149,7 +149,7 @@ Two parallel log files: **plain** (full road names) and **hashed** (road names, 
 - when update is done installing, a prompt will say "Please remove update media"
 - remove update media from vehicle
 - MH2p will reboot into normal mode with mods installed/uninstalled
-- Build and deploy instructions: get in touch if you want to try the beta.
+- Build and deploy instructions: get in touch if you want to try the beta
 
 **Build:**
 Edit build script with paths in your environment and run: 
@@ -159,6 +159,7 @@ recompile.bat
 
 **Deploy and test:**
 The easiest way is to just scp it to the target if you <a href="https://github.com/fifthBro/mh2p-ssh-access">enbaled ssh access</a>
+
 ---
 
 ## Configuration
