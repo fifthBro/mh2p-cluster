@@ -1,6 +1,6 @@
 # Android Auto (and soon CarPlay) Cluster Integration
 
-Bridge Android Auto navigation from Porsche PCM5 / VW / Audi MH2P to instrument cluster displays.
+Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrument cluster displays.
 
 > **Sponsor** https://ko-fi.com/fifthbro
 
