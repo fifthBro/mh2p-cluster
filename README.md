@@ -2,10 +2,12 @@
 
 Bridge Android Auto navigation from Porsche PCM5 / VW / Audi MH2P to instrument cluster displays.
 
+> **Sponsor** https://ko-fi.com/fifthbro
+
 > **Status:** Beta (v01027) — Testing compatibility across Porsche Cayenne, Macan, Panamera and 911
 
-**Sponsor** https://ko-fi.com/fifthbro
-**Download** https://github.com/fifthBro/mh2p-cluster/tree/main/builds
+> **Download** https://github.com/fifthBro/mh2p-cluster/tree/main/builds
+
 ---
 
 ## Overview
