@@ -12,9 +12,9 @@ Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrum
 
 ## Overview
 
-Translates Android Auto DSI navigation events into BAP (Board Access Protocol) messages for real-time turn-by-turn navigation on your instrument cluster. Native navigation monopolizes the cluster — this changes that.
+Translates Android Auto and Carplay navigation events into BAP (Bedien-und Anzeigeprotokoll) messages for real-time turn-by-turn navigation on your instrument cluster. Native navigation monopolizes the cluster — this changes that.
 
-- Intercepts Android Auto navigation events via DSI (Device System Interface)
+- Intercepts Android Auto navigation events via DSI and Carplay vis RGI 
 - Converts them to BAP protocol messages
 - Sends to cluster via `CombiBAPServiceNavi`
 - Overrides native navigation with configurable heartbeat (default 2s)
@@ -35,7 +35,7 @@ Translates Android Auto DSI navigation events into BAP (Board Access Protocol) m
 
 ## Architecture
 
-`AndroidAutoClusterIntegration` is a single Java class (Java 1.4 compatible) that bridges the Android Auto DSI event stream to the Porsche instrument cluster BAP navigation protocol.
+`ClusterIntegration` is a single Java class (Java 1.4 compatible) that bridges the Android Auto DSI, Carplay RGI event stream to the Porsche instrument cluster BAP navigation protocol.
 
 ### Data Flow
 
