@@ -1,0 +1,432 @@
+{
+  "buildVersion": "__VERSION__",
+  "config": {
+    "enableFileLogging": true,
+    "enableFileHashing": true,
+    "enableExternalLogging": true,
+    "enableRoundaboutLatching": true,
+    "enableHeartbeat": true,
+    "maneuverStateMask": 0,
+    "heartbeatInterval": 2000,
+    "forceImperial": false,
+    "forceRHD": false,
+    "logFilePath": "/tmp/cluster.log",
+    "hashedLogFilePath": "/tmp/cluster_hashed.log",
+    "logFileSize": 50,
+    "bargraphMode": "auto",
+    "dynamicBargraphDistance": 100,
+    "dynamicBargraphPercent": 50,
+    "metricUnitThreshold": 1000,
+    "imperialUnitThreshold": 161,
+    "imperialSmallUnit": "auto",
+    "destinationDisplayDuration": 5000,
+    "enableMapRender": true,
+    "mirrorFifo": "/tmp/cluster_ctl",
+    "mirrorMode": "fill",
+    "mirrorZoomX": 1.0,
+    "mirrorZoomY": 1.0,
+    "mirrorPanX": 0.0,
+    "mirrorPanY": 0.0,
+    "aaClusterMode": "h264"
+  },
+  "mirrorCarConfig": {
+    "5_3": { "name": "Cayenne E3",  "bargraphMode": "always",   "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02, "aaClusterMode": "h264" },
+    "6_8": { "name": "911 992",     "bargraphMode": "always",   "zoomX": 1.0,  "zoomY": 1.0,  "panX": 0.0,  "panY": 0.0,  "aaClusterMode": "h264" },
+    "6_2": { "name": "Panamera G2", "bargraphMode": "always",   "zoomX": 1.0,  "zoomY": 1.0,  "panX": 0.0,  "panY": 0.0,  "aaClusterMode": "h264" },
+    "4_1": { "name": "Macan",       "bargraphMode": "distance", "zoomX": 1.0,  "zoomY": 1.0,  "panX": 0.0,  "panY": 0.0,  "aaClusterMode": "h264" }
+  },
+  "dynamicThresholds": {
+    "veryFar":    { "boundary": 5000, "distance": 100, "rateLimit": 2000 },
+    "far":        { "boundary": 1000, "distance": 50,  "rateLimit": 500  },
+    "approaching":{ "boundary": 500,  "distance": 25,  "rateLimit": 250  },
+    "near":       { "boundary": 200,  "distance": 15,  "rateLimit": 200  },
+    "close":      { "boundary": 100,  "distance": 15,  "rateLimit": 150  },
+    "veryClose":  { "boundary": 50,   "distance": 10,  "rateLimit": 120  },
+    "now":        {                    "distance": 5,   "rateLimit": 100  }
+  },
+  "countries": [
+    {
+      "code": "AG",
+      "name": "Antigua and Barbuda",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "AU",
+      "name": "Australia",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "BS",
+      "name": "Bahamas",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "BB",
+      "name": "Barbados",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "BD",
+      "name": "Bangladesh",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "BM",
+      "name": "Bermuda",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "BT",
+      "name": "Bhutan",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "BW",
+      "name": "Botswana",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "BN",
+      "name": "Brunei",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "KY",
+      "name": "Cayman Islands",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "CY",
+      "name": "Cyprus",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "DM",
+      "name": "Dominica",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "TL",
+      "name": "East Timor",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "FK",
+      "name": "Falkland Islands",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "FJ",
+      "name": "Fiji",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "GD",
+      "name": "Grenada",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "GY",
+      "name": "Guyana",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "HK",
+      "name": "Hong Kong",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "IN",
+      "name": "India",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "ID",
+      "name": "Indonesia",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "IE",
+      "name": "Ireland",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "JM",
+      "name": "Jamaica",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "JP",
+      "name": "Japan",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "KE",
+      "name": "Kenya",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "KI",
+      "name": "Kiribati",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "LS",
+      "name": "Lesotho",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "MO",
+      "name": "Macau",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "MW",
+      "name": "Malawi",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "MY",
+      "name": "Malaysia",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "MV",
+      "name": "Maldives",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "MT",
+      "name": "Malta",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "MU",
+      "name": "Mauritius",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "MZ",
+      "name": "Mozambique",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "NA",
+      "name": "Namibia",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "NR",
+      "name": "Nauru",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "NP",
+      "name": "Nepal",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "NZ",
+      "name": "New Zealand",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "PK",
+      "name": "Pakistan",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "PG",
+      "name": "Papua New Guinea",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "SG",
+      "name": "Singapore",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "ZA",
+      "name": "South Africa",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "LK",
+      "name": "Sri Lanka",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "KN",
+      "name": "Saint Kitts and Nevis",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "LC",
+      "name": "Saint Lucia",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "VC",
+      "name": "Saint Vincent and the Grenadines",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "SR",
+      "name": "Suriname",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "SZ",
+      "name": "Eswatini",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "TZ",
+      "name": "Tanzania",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "TH",
+      "name": "Thailand",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "TO",
+      "name": "Tonga",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "TT",
+      "name": "Trinidad and Tobago",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "UG",
+      "name": "Uganda",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "GB",
+      "name": "United Kingdom",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "US",
+      "name": "United States",
+      "rhd": false,
+      "imperial": true,
+      "imperialSmallUnit": "feet"
+    },
+    {
+      "code": "VG",
+      "name": "British Virgin Islands",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "VI",
+      "name": "US Virgin Islands",
+      "rhd": true,
+      "imperial": true,
+      "imperialSmallUnit": "yards"
+    },
+    {
+      "code": "ZM",
+      "name": "Zambia",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "ZW",
+      "name": "Zimbabwe",
+      "rhd": true,
+      "imperial": false
+    },
+    {
+      "code": "CA",
+      "name": "Canada",
+      "rhd": false,
+      "imperial": false
+    },
+    {
+      "code": "LR",
+      "name": "Liberia",
+      "rhd": false,
+      "imperial": true,
+      "imperialSmallUnit": "feet"
+    },
+    {
+      "code": "MM",
+      "name": "Myanmar",
+      "rhd": false,
+      "imperial": true,
+      "imperialSmallUnit": "feet"
+    }
+  ]
+}
