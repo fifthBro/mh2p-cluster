@@ -1,7 +1,9 @@
 # Android Auto (and soon CarPlay) Cluster Integration
 
 Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrument cluster displays.
+
 > **Donate to charity** https://www.justgiving.com/
+
 > **Sponsor** https://ko-fi.com/fifthbro
 
 > **Status:** Beta (v01036) — Testing compatibility across Porsche Cayenne, Macan, Panamera and 911
