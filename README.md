@@ -16,7 +16,7 @@ Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrum
 
 Translates Android Auto and Carplay navigation events into BAP (Bedien-und Anzeigeprotokoll) messages for real-time turn-by-turn navigation on your instrument cluster. Native navigation monopolizes the cluster — this changes that.
 
-- Intercepts Android Auto navigation events via DSI and Carplay vis RGI 
+- Intercepts Android Auto navigation events via DSI and Carplay vis RGI (thanks to https://github.com/luka-dev/mib2q-carplay-rgi/)
 - Converts them to BAP protocol messages
 - Sends to cluster via `CombiBAPServiceNavi`
 - Overrides native navigation with configurable heartbeat (default 2s)
