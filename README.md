@@ -1,4 +1,4 @@
-# Android Auto (and soon CarPlay) Cluster Integration
+# Android Auto and CarPlay Cluster Integration
 
 Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrument cluster displays.
 
@@ -6,9 +6,9 @@ Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrum
 
 > **Sponsor** https://ko-fi.com/fifthbro
 
-> **Status:** Beta (v01036) — Testing compatibility across Porsche Cayenne, Macan, Panamera and 911
+> **Status:** Beta (v1_main) — Testing compatibility across Porsche Cayenne, Macan, Panamera and 911
 
-> **Download** [latest release](https://github.com/fifthBro/mh2p-cluster/raw/refs/heads/main/builds/AndroidAutoCluster_v01036_be20380.zip)
+> **Download** [latest release](https://github.com/fifthBro/mh2p-cluster/raw/refs/heads/main/builds/ClusterIntegration_v1_main_d433c92.zip)
 
 ---
 
@@ -279,7 +279,7 @@ This project is the result of extensive reverse-engineering and testing on mh2p.
 
 ## Changelog
 
-### v1036 — Beta candidate
+### v1_main — Beta candidate
 Testing compatibility across Porsche Cayenne, Macan, Panamera and 911.
 
 ---
