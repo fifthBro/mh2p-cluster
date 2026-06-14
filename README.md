@@ -28,7 +28,7 @@ Translates Android Auto and Carplay navigation events into BAP (Bedien-und Anzei
 
 - **Full navigation support** — turn arrows, distance, road names, roundabouts, highway exits
 - **Real-time updates** — proximity-zone throttling (veryFar→now) with heartbeat to override native nav
-- **Intelligent unit detection** — automatic km/mi and LHD/RHD detection via platform services with JSON country fallback (60+ countries)
+- **Unit detection** — automatic km/mi and LHD/RHD detection via platform services with JSON country fallback (60+ countries)
 - **JSON configuration** — runtime-configurable without recompilation; override via USB/SD card
 - **Comprehensive logging** — dual-timestamp log with optional privacy hashing and external USB/SD output
 - **Java 1.4 compatible** — runs on the embedded QNX/OSGI platform without modern Java features
@@ -285,11 +285,10 @@ Testing compatibility across Porsche Cayenne, Macan, Panamera and 911.
 ---
 
 ## Credits
-
+- **LukaDev** — Managing screens in VW/MIB2 and CarPlay RGHI and GAL hacking: https://github.com/luka-dev/mib2q-carplay-rgi/
 - **One1Blt** — Android Auto/VNC to MIB2 rendering: https://github.com/OneB1t/VcMOSTRenderMqb
 - **adi961** — Turn-by-turn to VC integration: https://github.com/adi961/mib2-android-auto-vc
 - **LawPaul** — MH2P Modkit: https://lawpaul.github.io/MH2p_SD_ModKit_Site/
-- **LukaDev** — Managing screens in VW/MIB2 and CarPlay/GAL hacking: https://github.com/luka-dev/mib2q-carplay-rgi/
 - **litdreams10** — General platform knowledge, Android Auto testing
 
 ---
