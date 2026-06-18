@@ -1594,8 +1594,14 @@ static int setup_screen(int width, int height) {
             g_dec.decode_siblings[0], g_dec.decode_siblings[MAX_SURFACES-1]);
     }
 
-    /* post_win = RGBX8888 displayable. RGBA siblings will be mixer outputs. */
-    int win_size[2] = { width, height };
+    /* post_win = RGBX8888 displayable. RGBA siblings will be mixer outputs.
+     * SIZE/BUFFER_SIZE is the detected displayable size (DISP_W × DISP_H),
+     * NOT the H.264 stream size. The displaymanager doesn't scale our buffer
+     * down — it shows a 1:1 cropped window. If post_win is stream-sized
+     * (1280×720) on Macan (~540×480 cluster), only the top-left ~540×480
+     * region of the stream shows. Sizing to DISP makes screen_blit scale
+     * the stream onto the displayable instead. */
+    int win_size[2] = { DISP_W, DISP_H };
     int pfmt = SCREEN_FORMAT_RGBX8888;       /* 8 — matches Option A egl_win that bound */
 #ifdef USE_SCREEN_BLIT
     /* v3: post_win must accept compositor writes (screen_blit destination)
@@ -1644,6 +1650,23 @@ static int setup_screen(int width, int height) {
     }
     screen_get_window_property_pv(g_dec.post_win, SCREEN_PROPERTY_RENDER_BUFFERS,
                                   (void**)g_dec.post_bufs);
+
+    /* Pre-clear all post_bufs to black. screen_blit in letterbox mode only
+     * writes the inner aspect-fit region; the top/bottom (or side) bars
+     * outside it stay at whatever uninitialized memory holds — typically
+     * garbage that "blinks" between buffer rotations. Filling them once
+     * with black up front keeps the letterbox bars black thereafter.
+     * Requires SCREEN_USAGE_WRITE on post_win (already set in USE_SCREEN_BLIT). */
+    for (int i = 0; i < MAX_SURFACES; i++) {
+        void* p = NULL;
+        int   s = 0;
+        screen_get_buffer_property_pv(g_dec.post_bufs[i], SCREEN_PROPERTY_POINTER, &p);
+        screen_get_buffer_property_iv(g_dec.post_bufs[i], SCREEN_PROPERTY_STRIDE,  &s);
+        if (p && s > 0) {
+            memset(p, 0, (size_t)s * (size_t)DISP_H);
+        }
+    }
+
     /* Verify ID_STRING and VISIBLE actually took effect — read back. */
     char idbuf[16] = {0};
     int got_vis = 0;
@@ -1934,7 +1957,7 @@ static int setup_screen(int width, int height) {
         int ba[] = { SCREEN_BLIT_END };
         int br = screen_blit(g_dec.scr_ctx, g_dec.post_bufs[pidx],
                              g_dec.boot_pix_buf, ba);
-        int dirty[4] = { 0, 0, width, height };
+        int dirty[4] = { 0, 0, DISP_W, DISP_H };
         screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx], 1, dirty, 0);
         screen_flush_context(g_dec.scr_ctx, 0);
         g_boot_splash_until_ms         = now_us() / 1000ULL + 2000ULL;
@@ -2147,7 +2170,7 @@ static void apply_stage_signals(void) {
             int ba[] = { SCREEN_BLIT_END };
             int br = screen_blit(g_dec.scr_ctx, g_dec.post_bufs[pidx],
                                  g_dec.boot_pix_buf, ba);
-            int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
+            int dirty[4] = { 0, 0, DISP_W, DISP_H };
             screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx],
                                1, dirty, 0);
             screen_flush_context(g_dec.scr_ctx, 0);
@@ -2169,7 +2192,7 @@ static void apply_stage_signals(void) {
             int blit_attribs[] = { SCREEN_BLIT_END };
             int br = screen_blit(g_dec.scr_ctx, g_dec.post_bufs[pidx],
                                  g_dec.canim_pix_buf, blit_attribs);
-            int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
+            int dirty[4] = { 0, 0, DISP_W, DISP_H };
             screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx],
                                1, dirty, 0);
             screen_flush_context(g_dec.scr_ctx, 0);
@@ -2193,7 +2216,7 @@ static void apply_stage_signals(void) {
         (now_us() / 1000ULL) >= g_boot_splash_until_ms) {
         int idx = (g_dec.post_buf_idx == 0)
                       ? (MAX_SURFACES - 1) : (g_dec.post_buf_idx - 1);
-        int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
+        int dirty[4] = { 0, 0, DISP_W, DISP_H };
         screen_post_window(g_dec.post_win, g_dec.post_bufs[idx], 1, dirty, 0);
         screen_flush_context(g_dec.scr_ctx, 0);
         g_boot_splash_post_done = 1;
@@ -2209,7 +2232,7 @@ static void apply_stage_signals(void) {
         g_last_posted_pidx >= 0) {
         uint64_t now_ms = now_us() / 1000ULL;
         if (now_ms - g_last_post_ms > 50) {
-            int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
+            int dirty[4] = { 0, 0, DISP_W, DISP_H };
             screen_post_window(g_dec.post_win,
                                g_dec.post_bufs[g_last_posted_pidx],
                                1, dirty, 0);
@@ -2272,8 +2295,12 @@ static int cb_display_picture(void* user, void* disp_info) {
      * larger YV12 buffer. Destination = post_win render buffer (xres × yres,
      * defaulting to the source size if not set). */
     int sx = 0, sy = 0, sw = g_dec.width, sh = g_dec.height;
-    int dst_w = (g_h264_args.xres > 0) ? g_h264_args.xres : g_dec.width;
-    int dst_h = (g_h264_args.yres > 0) ? g_h264_args.yres : g_dec.height;
+    /* Default dst to the displayable size (DISP_W × DISP_H) so screen_blit
+     * scales the 1280×720 decoded YV12 onto whatever the actual cluster
+     * panel is (Macan ~540×480, Cayenne MH2P 1280×860). xres/yres override
+     * still wins if Java passes them. */
+    int dst_w = (g_h264_args.xres > 0) ? g_h264_args.xres : DISP_W;
+    int dst_h = (g_h264_args.yres > 0) ? g_h264_args.yres : DISP_H;
     int dx = 0, dy = 0, dw = dst_w, dh = dst_h;
     {
         float src_ar = (float)g_dec.width / (float)g_dec.height;
@@ -2361,7 +2388,7 @@ static int cb_display_picture(void* user, void* disp_info) {
      * In PREPARE/PAUSED we still blit (so the latest frame is in post_bufs[pidx]
      * ready to be posted on the next resume) but skip the post itself, leaving
      * displayable 33 free for splash or whatever else owns it. */
-    int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
+    int dirty[4] = { 0, 0, DISP_W, DISP_H };
     /* Skip post during the 2s boot splash window so decoded frames don't
      * overwrite fifthBro immediately. Heartbeat in apply_stage_signals
      * re-posts the splash buffer every ~50ms during the window. */
