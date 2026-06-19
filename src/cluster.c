@@ -436,14 +436,15 @@ static int daemon_run(int argc, char **argv) {
     printf("[daemon] commands: prepare [args]  start [args]  resume [args]  pause  stop\n");
 
     pid_t       child_pid = -1;
-    pid_t       splash_pid = -1;  /* idle_logo child holding disp 33 when no real child runs */
-    int         boot_splash_shown = 0;  /* once per daemon lifetime (per boot) */
+    pid_t       splash_pid = -1;  /* canim_splash (Porsche) when h264 is dead */
     const char *self      = argv[0];
 
     /* Daemon comes up silent: native maps owns disp 33 by default.
-     * Splash (canim) only spawns on pause/stop commands from Java; fifthBro
-     * is shown for 2s on the first 'prepare' or 'start' command per daemon
-     * lifetime (CarPlay or AA session start), then never again until reboot. */
+     * On first `prepare`/`start` we spawn the h264 child in STAGE_PREPARE
+     * (decoder warming, post_win invisible). Java's `resume` then drives
+     * the in-child boot splash blit and the PREPARE→RENDERING transition.
+     * Subsequent prepare/start commands DO NOT respawn — the warm child
+     * stays alive across Java's flow and is only killed on `stop`. */
 
     while (1) {
         usleep(poll_ms * 1000);
@@ -533,86 +534,72 @@ static int daemon_run(int argc, char **argv) {
                 printf("[daemon] resume: no child\n");
             }
 
-        /* ── PREPARE: kill any child, spawn with `prepare` arg ─────── */
+        /* ── PREPARE: spawn h264 child in PREPARE stage if not already up.
+         *           If a child already exists, leave it alone — it's warm and
+         *           waiting for resume. The boot splash and disp 33 binding
+         *           are entirely in-child (apply_stage_signals on resume blits
+         *           boot_pixmap to post_win). */
         } else if (strncmp(line, "prepare", 7) == 0) {
             const char *extra = line + 7;
             while (*extra == ' ') extra++;
             char cmdline[512];
-            /* Merge daemon's default_args with command's extra args so
-             * daemon-level flags (e.g. verbose=2) flow into every child.
-             * cluster.c arg parsing is last-wins, so extra overrides
-             * default_args on conflicts. */
-            /* If the per-boot splash has already been shown (e.g. previous
-             * AA session this boot, or earlier mirror session), pass
-             * skip_boot_splash=1 so the new h264 child won't re-fire it. */
-            const char *skip_arg = boot_splash_shown ? " skip_boot_splash=1" : "";
             int n;
             if (*extra && *default_args)
-                n = snprintf(cmdline, sizeof(cmdline), "%s %s%s prepare", default_args, extra, skip_arg);
+                n = snprintf(cmdline, sizeof(cmdline), "%s %s prepare", default_args, extra);
             else if (*extra)
-                n = snprintf(cmdline, sizeof(cmdline), "%s%s prepare", extra, skip_arg);
+                n = snprintf(cmdline, sizeof(cmdline), "%s prepare", extra);
             else
-                n = snprintf(cmdline, sizeof(cmdline), "%s%s prepare", default_args, skip_arg);
+                n = snprintf(cmdline, sizeof(cmdline), "%s prepare", default_args);
             if (n < 0 || n >= (int)sizeof(cmdline)) cmdline[sizeof(cmdline)-1] = '\0';
 
-            /* No boot_splash on prepare — h264 child paints its own fifthBro
-             * on first resume via the in-child splash path (apply_stage_signals).
-             * Spawning boot_splash here would override disp 33 too early. */
-
-            if (child_pid > 0) {
-                kill(child_pid, SIGTERM);
-                waitpid(child_pid, NULL, 0);
-                child_pid = -1;
-            }
-            /* Do NOT kill canim_splash here. h264 child spawns in PREPARE
-             * with post_win VISIBLE=0 — it doesn't claim disp 33 until
-             * resume. Leaving canim_splash alive across PREPARE keeps the
-             * Porsche image on screen during the gap between phone reconnect
-             * and user focus, instead of going BLACK. Resume kills it. The
-             * earlier in-child-splash binding race that broke first focus
-             * here is suppressed on reconnect via skip_boot_splash=1. */
-            child_pid = daemon_start_mirror(self, cmdline);
-            /* Mark per-boot splash as consumed so future prepares (e.g. after
-             * disconnect+reconnect) don't replay it. */
-            boot_splash_shown = 1;
-            printf("[daemon] prepare: pid=%d args='%s'\n", (int)child_pid, cmdline);
-
-        /* ── START: kill any child, spawn fresh ────────────────────── */
-        } else if (strncmp(line, "start", 5) == 0) {
-            const char *extra = line + 5;
-            while (*extra == ' ') extra++;
-            char cmdline[512];
-            /* Same merge as prepare: default_args + extra so daemon flags
-             * (verbose etc) reach every spawned child. */
-            int n;
-            if (*extra && *default_args)
-                n = snprintf(cmdline, sizeof(cmdline), "%s %s", default_args, extra);
-            else if (*extra)
-                n = snprintf(cmdline, sizeof(cmdline), "%s", extra);
-            else
-                n = snprintf(cmdline, sizeof(cmdline), "%s", default_args);
-            if (n < 0 || n >= (int)sizeof(cmdline)) cmdline[sizeof(cmdline)-1] = '\0';
-
-            if (!boot_splash_shown) {
-                pid_t bp = daemon_start_mirror(self, "capture=boot_splash duration_s=2");
-                printf("[daemon] boot_splash: pid=%d, waiting 2s before start\n", (int)bp);
-                if (bp > 0) waitpid(bp, NULL, 0);
-                boot_splash_shown = 1;
-            }
-
-            if (child_pid > 0) {
-                kill(child_pid, SIGTERM);
-                waitpid(child_pid, NULL, 0);
-                child_pid = -1;
-            }
-            /* Release disp 33 from the idle splash before spawning. */
+            /* Release disp 33 from any canim_splash before the real child claims it. */
             if (splash_pid > 0) {
                 kill(splash_pid, SIGTERM);
                 waitpid(splash_pid, NULL, 0);
                 splash_pid = -1;
             }
-            child_pid = daemon_start_mirror(self, cmdline);
-            printf("[daemon] start: pid=%d args='%s'\n", (int)child_pid, cmdline);
+            if (child_pid > 0) {
+                printf("[daemon] prepare: child already warm pid=%d, leaving in PREPARE\n",
+                       (int)child_pid);
+            } else {
+                child_pid = daemon_start_mirror(self, cmdline);
+                printf("[daemon] prepare: pid=%d args='%s'\n", (int)child_pid, cmdline);
+            }
+
+        /* ── START: same as prepare-then-resume. If no child, spawn one in
+         *           PREPARE; then SIGUSR1 to flip to RENDERING (which runs
+         *           the in-child boot splash blit). If a child is already
+         *           up, just SIGUSR1. */
+        } else if (strncmp(line, "start", 5) == 0) {
+            const char *extra = line + 5;
+            while (*extra == ' ') extra++;
+            char cmdline[512];
+            int n;
+            if (*extra && *default_args)
+                n = snprintf(cmdline, sizeof(cmdline), "%s %s prepare", default_args, extra);
+            else if (*extra)
+                n = snprintf(cmdline, sizeof(cmdline), "%s prepare", extra);
+            else
+                n = snprintf(cmdline, sizeof(cmdline), "%s prepare", default_args);
+            if (n < 0 || n >= (int)sizeof(cmdline)) cmdline[sizeof(cmdline)-1] = '\0';
+
+            if (splash_pid > 0) {
+                kill(splash_pid, SIGTERM);
+                waitpid(splash_pid, NULL, 0);
+                splash_pid = -1;
+            }
+            if (child_pid <= 0) {
+                child_pid = daemon_start_mirror(self, cmdline);
+                printf("[daemon] start: spawned pid=%d args='%s'\n", (int)child_pid, cmdline);
+                /* Give the child a moment to reach STAGE_PREPARE before signaling.
+                 * If we SIGUSR1 too early, the handler isn't installed yet. */
+                usleep(200 * 1000);
+            }
+            if (child_pid > 0) {
+                printf("[daemon] start: SIGUSR1 pid=%d (resume to RENDERING)\n",
+                       (int)child_pid);
+                kill(child_pid, SIGUSR1);
+            }
 
         } else {
             printf("[daemon] unknown command '%s' (use: prepare/start [args] / resume / pause / stop)\n", line);
@@ -1329,23 +1316,6 @@ static volatile sig_atomic_t g_pause_requested  = 0;
 static void on_sigusr1(int sig) { (void)sig; g_resume_requested = 1; }
 static void on_sigusr2(int sig) { (void)sig; g_pause_requested  = 1; }
 
-/* Boot canim splash on first h264 resume: blit embedded fifthBro canim into
- * post_win at resume time, hold for 2s while decoder warms in background,
- * then resume normal posting. _shown_in_session prevents re-splash on
- * subsequent pause↔resume cycles within the same h264 child lifetime. */
-static int      g_boot_splash_shown_in_session = 0;
-static uint64_t g_boot_splash_until_ms        = 0;
-static int      g_boot_splash_post_done       = 0;  /* one-shot: post latest
-    decoded buffer the moment the 2s splash window expires. Without this,
-    if the decoder is idle (no new H.264 data) when 2s elapses, cb_display_picture
-    never fires and the boot canim stays on screen forever. */
-/* Heartbeat re-post: when the decoder goes idle (phone stops sending H.264,
- * e.g. AA loading splash → wait for user nav), cb_display_picture stops
- * firing, no new posts arrive, and the compositor releases post_win's buffer
- * → cluster goes BLACK. Track the last-posted pidx and re-post it from the
- * decode loop's idle path every ~50ms so the compositor stays active. */
-static int      g_last_posted_pidx = -1;
-static uint64_t g_last_post_ms     = 0;
 
 /* DISP_W / DISP_H are runtime statics declared at file top (line ~80).
  * Auto-detected from displayable 33 at startup, overridable via xres=/yres=.
@@ -1501,9 +1471,10 @@ typedef struct {
      * Single window on disp 33, no second-window competition. */
     screen_pixmap_t canim_pixmap;
     screen_buffer_t canim_pix_buf;
-    /* Second pixmap holding the fifthBro boot canim from the embedded
-     * boot_canim_data array. Painted into post_win on first resume of the
-     * h264 session for 2s while the decoder warms in background. */
+    /* boot_pixmap: fifthBro splash at post_win dimensions. Loaded once at
+     * setup_screen from the embedded boot_canim_data. Blitted to post_buf
+     * on STAGE_PREPARE → RENDERING transition so the post_win has visible
+     * content when VISIBLE flips to 1, instead of a blank/black frame. */
     screen_pixmap_t boot_pixmap;
     screen_buffer_t boot_pix_buf;
 } DecoderState;
@@ -1594,14 +1565,8 @@ static int setup_screen(int width, int height) {
             g_dec.decode_siblings[0], g_dec.decode_siblings[MAX_SURFACES-1]);
     }
 
-    /* post_win = RGBX8888 displayable. RGBA siblings will be mixer outputs.
-     * SIZE/BUFFER_SIZE is the detected displayable size (DISP_W × DISP_H),
-     * NOT the H.264 stream size. The displaymanager doesn't scale our buffer
-     * down — it shows a 1:1 cropped window. If post_win is stream-sized
-     * (1280×720) on Macan (~540×480 cluster), only the top-left ~540×480
-     * region of the stream shows. Sizing to DISP makes screen_blit scale
-     * the stream onto the displayable instead. */
-    int win_size[2] = { DISP_W, DISP_H };
+    /* post_win = RGBX8888 displayable. RGBA siblings will be mixer outputs. */
+    int win_size[2] = { width, height };
     int pfmt = SCREEN_FORMAT_RGBX8888;       /* 8 — matches Option A egl_win that bound */
 #ifdef USE_SCREEN_BLIT
     /* v3: post_win must accept compositor writes (screen_blit destination)
@@ -1650,23 +1615,6 @@ static int setup_screen(int width, int height) {
     }
     screen_get_window_property_pv(g_dec.post_win, SCREEN_PROPERTY_RENDER_BUFFERS,
                                   (void**)g_dec.post_bufs);
-
-    /* Pre-clear all post_bufs to black. screen_blit in letterbox mode only
-     * writes the inner aspect-fit region; the top/bottom (or side) bars
-     * outside it stay at whatever uninitialized memory holds — typically
-     * garbage that "blinks" between buffer rotations. Filling them once
-     * with black up front keeps the letterbox bars black thereafter.
-     * Requires SCREEN_USAGE_WRITE on post_win (already set in USE_SCREEN_BLIT). */
-    for (int i = 0; i < MAX_SURFACES; i++) {
-        void* p = NULL;
-        int   s = 0;
-        screen_get_buffer_property_pv(g_dec.post_bufs[i], SCREEN_PROPERTY_POINTER, &p);
-        screen_get_buffer_property_iv(g_dec.post_bufs[i], SCREEN_PROPERTY_STRIDE,  &s);
-        if (p && s > 0) {
-            memset(p, 0, (size_t)s * (size_t)DISP_H);
-        }
-    }
-
     /* Verify ID_STRING and VISIBLE actually took effect — read back. */
     char idbuf[16] = {0};
     int got_vis = 0;
@@ -1746,10 +1694,11 @@ static int setup_screen(int width, int height) {
         LOG("  canim_pixmap: skipped (canim_buf not loaded — splash disabled)\n");
     }
 
-    /* --- boot_pixmap: holds the embedded fifthBro boot canim. Painted
-     * into post_win on first resume so the cluster shows the splash while
-     * the decoder warms in background. Sized to post_win buffer dims so
-     * the blit is identity (no scaling). */
+    /* --- boot_pixmap: fifthBro splash, same layout as canim_pixmap. Loaded
+     * from the embedded boot_canim_data byte array (no FS read). Used by
+     * apply_stage_signals on PREPARE→RENDERING so the resume transition has
+     * a visible posted frame instead of blank.
+     */
     {
         int prc = screen_create_pixmap(&g_dec.boot_pixmap, g_dec.scr_ctx);
         if (prc) {
@@ -1764,7 +1713,9 @@ static int setup_screen(int width, int height) {
             screen_set_pixmap_property_iv(g_dec.boot_pixmap, SCREEN_PROPERTY_USAGE,       &pix_usage);
             screen_set_pixmap_property_iv(g_dec.boot_pixmap, SCREEN_PROPERTY_BUFFER_SIZE, pix_size);
             int pbrc;
-            do { pbrc = screen_create_pixmap_buffer(g_dec.boot_pixmap); } while (pbrc < 0 && errno == EINTR);
+            do {
+                pbrc = screen_create_pixmap_buffer(g_dec.boot_pixmap);
+            } while (pbrc < 0 && errno == EINTR);
             if (pbrc) {
                 LOG("  boot_pixmap buffer failed rc=%d errno=%d — boot splash disabled\n",
                     pbrc, errno);
@@ -1775,25 +1726,25 @@ static int setup_screen(int width, int height) {
                 screen_get_pixmap_property_pv(g_dec.boot_pixmap,
                                               SCREEN_PROPERTY_RENDER_BUFFERS,
                                               (void**)&g_dec.boot_pix_buf);
-                void* bpix_ptr = NULL;
-                int   bpix_stride = 0;
+                void* pix_ptr = NULL;
+                int pix_stride = 0;
                 screen_get_buffer_property_pv(g_dec.boot_pix_buf,
-                                              SCREEN_PROPERTY_POINTER, &bpix_ptr);
+                                              SCREEN_PROPERTY_POINTER, &pix_ptr);
                 screen_get_buffer_property_iv(g_dec.boot_pix_buf,
-                                              SCREEN_PROPERTY_STRIDE, &bpix_stride);
-                if (bpix_ptr && bpix_stride > 0) {
+                                              SCREEN_PROPERTY_STRIDE, &pix_stride);
+                if (pix_ptr && pix_stride > 0) {
                     int lr = canim_load_from_mem(boot_canim_data, boot_canim_data_len,
-                                                 (uint8_t*)bpix_ptr, bpix_stride,
-                                                 width, height, 0);
+                                                 pix_ptr, pix_stride, width, height, 0);
                     LOG("  boot_pixmap: %dx%d stride=%d ptr=%p load_rc=%d\n",
-                        width, height, bpix_stride, bpix_ptr, lr);
+                        width, height, pix_stride, pix_ptr, lr);
                     if (lr != 0) {
                         screen_destroy_pixmap(g_dec.boot_pixmap);
                         g_dec.boot_pixmap = NULL;
                         g_dec.boot_pix_buf = NULL;
                     }
                 } else {
-                    LOG("  boot_pixmap: no CPU access — boot splash disabled\n");
+                    LOG("  boot_pixmap: %dx%d ptr=%p stride=%d — no CPU access, "
+                        "boot splash disabled\n", width, height, pix_ptr, pix_stride);
                     screen_destroy_pixmap(g_dec.boot_pixmap);
                     g_dec.boot_pixmap = NULL;
                     g_dec.boot_pix_buf = NULL;
@@ -1945,29 +1896,6 @@ static int setup_screen(int width, int height) {
 
     g_dec.scr_ready = 1;
     LOG("screen setup complete (Option B: direct YV12 post to displayable 33)\n");
-
-    /* If a resume signal arrived BEFORE setup_screen ran (race: Java often
-     * sends resume right after prepare, faster than the first NAL arrives),
-     * apply_stage_signals already consumed it with scr_ready=0 and skipped
-     * the boot splash. Fire it here now that boot_pixmap exists. */
-    if (!g_boot_splash_shown_in_session && g_render_stage == STAGE_RENDERING &&
-        g_dec.boot_pixmap && g_dec.boot_pix_buf) {
-        int pidx = g_dec.post_buf_idx;
-        g_dec.post_buf_idx = (pidx + 1) % MAX_SURFACES;
-        int ba[] = { SCREEN_BLIT_END };
-        int br = screen_blit(g_dec.scr_ctx, g_dec.post_bufs[pidx],
-                             g_dec.boot_pix_buf, ba);
-        int dirty[4] = { 0, 0, DISP_W, DISP_H };
-        screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx], 1, dirty, 0);
-        screen_flush_context(g_dec.scr_ctx, 0);
-        g_boot_splash_until_ms         = now_us() / 1000ULL + 2000ULL;
-        g_boot_splash_shown_in_session = 1;
-        g_last_posted_pidx             = pidx;
-        g_last_post_ms                 = now_us() / 1000ULL;
-        LOG("setup_screen: late-fire boot splash 2s (blit rc=%d pidx=%d)\n",
-            br, pidx);
-    }
-
     sigprocmask(SIG_SETMASK, &old_sig_mask, NULL);
     return 0;
 }
@@ -2152,34 +2080,34 @@ static int cb_decode_picture(void* user, void* pic_info) {
  * H.264 data is arriving — the pause case, where the phone has stopped
  * sending frames and cb_display_picture is no longer invoked). */
 static void apply_stage_signals(void) {
-    if (g_resume_requested) {
+    /* Gate the entire resume processing on scr_ready. If SIGUSR1 arrives
+     * before setup_screen completes (e.g. during the SHM-wait at startup),
+     * we must NOT flip g_render_stage here — setup_screen needs to see
+     * STAGE_PREPARE to create post_win with VISIBLE=0. The signal stays
+     * latched (g_resume_requested) and is processed on the next call after
+     * scr_ready becomes true. */
+    if (g_resume_requested && g_dec.scr_ready) {
         g_resume_requested = 0;
-        if (g_dec.scr_ready && g_render_stage == STAGE_PREPARE) {
+        if (g_render_stage == STAGE_PREPARE) {
+            /* Blit boot_pixmap into the next post_buf and post it BEFORE
+             * flipping VISIBLE=1. Without a posted buffer the compositor
+             * shows blank when VISIBLE becomes 1; the splash is the bridge
+             * while the decoder warms up and produces real frames. */
+            int br = -1;
+            if (g_dec.boot_pixmap && g_dec.boot_pix_buf) {
+                int pidx = g_dec.post_buf_idx;
+                g_dec.post_buf_idx = (pidx + 1) % MAX_SURFACES;
+                int blit_attribs[] = { SCREEN_BLIT_END };
+                br = screen_blit(g_dec.scr_ctx, g_dec.post_bufs[pidx],
+                                 g_dec.boot_pix_buf, blit_attribs);
+                int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
+                screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx],
+                                   1, dirty, 0);
+            }
             int vis = 1;
             screen_set_window_property_iv(g_dec.post_win, SCREEN_PROPERTY_VISIBLE, &vis);
             screen_flush_context(g_dec.scr_ctx, 0);
-        }
-        /* First resume of this h264 child: paint embedded boot canim into
-         * post_win and hold for 2s while the decoder warms in background.
-         * cb_display_picture's post path checks g_boot_splash_until_ms and
-         * skips its own screen_post_window during that window. */
-        if (!g_boot_splash_shown_in_session && g_dec.scr_ready &&
-            g_dec.boot_pixmap && g_dec.boot_pix_buf) {
-            int pidx = g_dec.post_buf_idx;
-            g_dec.post_buf_idx = (pidx + 1) % MAX_SURFACES;
-            int ba[] = { SCREEN_BLIT_END };
-            int br = screen_blit(g_dec.scr_ctx, g_dec.post_bufs[pidx],
-                                 g_dec.boot_pix_buf, ba);
-            int dirty[4] = { 0, 0, DISP_W, DISP_H };
-            screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx],
-                               1, dirty, 0);
-            screen_flush_context(g_dec.scr_ctx, 0);
-            g_boot_splash_until_ms         = now_us() / 1000ULL + 2000ULL;
-            g_boot_splash_shown_in_session = 1;
-            g_last_posted_pidx             = pidx;
-            g_last_post_ms                 = now_us() / 1000ULL;
-            LOG("h264: resume → boot splash 2s (blit rc=%d pidx=%d), "
-                "decoder warms in background\n", br, pidx);
+            LOG("h264: resume → boot splash (blit rc=%d), decoder warms in background\n", br);
         }
         g_render_stage = STAGE_RENDERING;
         LOG("h264: resume → RENDERING (frame=%d)\n", g_dec.frames_displayed);
@@ -2192,7 +2120,7 @@ static void apply_stage_signals(void) {
             int blit_attribs[] = { SCREEN_BLIT_END };
             int br = screen_blit(g_dec.scr_ctx, g_dec.post_bufs[pidx],
                                  g_dec.canim_pix_buf, blit_attribs);
-            int dirty[4] = { 0, 0, DISP_W, DISP_H };
+            int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
             screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx],
                                1, dirty, 0);
             screen_flush_context(g_dec.scr_ctx, 0);
@@ -2204,41 +2132,6 @@ static void apply_stage_signals(void) {
                 (void*)g_dec.canim_pix_buf, g_dec.frames_displayed);
         }
         g_render_stage = STAGE_PAUSED;
-    }
-
-    /* After the boot splash 2s window expires, force a post of the last
-     * decoded buffer once. cb_display_picture's post path resumes normally
-     * when frames are arriving, but if the decoder is idle at the 2s mark
-     * no post would happen and the splash would stay. The decode loop's
-     * idle path calls apply_stage_signals every ~1ms so this fires promptly. */
-    if (!g_boot_splash_post_done && g_boot_splash_until_ms > 0 &&
-        g_dec.scr_ready && g_render_stage == STAGE_RENDERING &&
-        (now_us() / 1000ULL) >= g_boot_splash_until_ms) {
-        int idx = (g_dec.post_buf_idx == 0)
-                      ? (MAX_SURFACES - 1) : (g_dec.post_buf_idx - 1);
-        int dirty[4] = { 0, 0, DISP_W, DISP_H };
-        screen_post_window(g_dec.post_win, g_dec.post_bufs[idx], 1, dirty, 0);
-        screen_flush_context(g_dec.scr_ctx, 0);
-        g_boot_splash_post_done = 1;
-        g_last_posted_pidx      = idx;
-        g_last_post_ms          = now_us() / 1000ULL;
-        LOG("h264: boot splash 2s elapsed, posted last decoded pidx=%d\n", idx);
-    }
-
-    /* Heartbeat: re-post the last buffer every ~50ms when the decoder is
-     * idle (cb_display_picture not firing) so the compositor doesn't
-     * release the buffer and go BLACK. */
-    if (g_dec.scr_ready && g_render_stage == STAGE_RENDERING &&
-        g_last_posted_pidx >= 0) {
-        uint64_t now_ms = now_us() / 1000ULL;
-        if (now_ms - g_last_post_ms > 50) {
-            int dirty[4] = { 0, 0, DISP_W, DISP_H };
-            screen_post_window(g_dec.post_win,
-                               g_dec.post_bufs[g_last_posted_pidx],
-                               1, dirty, 0);
-            screen_flush_context(g_dec.scr_ctx, 0);
-            g_last_post_ms = now_ms;
-        }
     }
 }
 
@@ -2295,12 +2188,8 @@ static int cb_display_picture(void* user, void* disp_info) {
      * larger YV12 buffer. Destination = post_win render buffer (xres × yres,
      * defaulting to the source size if not set). */
     int sx = 0, sy = 0, sw = g_dec.width, sh = g_dec.height;
-    /* Default dst to the displayable size (DISP_W × DISP_H) so screen_blit
-     * scales the 1280×720 decoded YV12 onto whatever the actual cluster
-     * panel is (Macan ~540×480, Cayenne MH2P 1280×860). xres/yres override
-     * still wins if Java passes them. */
-    int dst_w = (g_h264_args.xres > 0) ? g_h264_args.xres : DISP_W;
-    int dst_h = (g_h264_args.yres > 0) ? g_h264_args.yres : DISP_H;
+    int dst_w = (g_h264_args.xres > 0) ? g_h264_args.xres : g_dec.width;
+    int dst_h = (g_h264_args.yres > 0) ? g_h264_args.yres : g_dec.height;
     int dx = 0, dy = 0, dw = dst_w, dh = dst_h;
     {
         float src_ar = (float)g_dec.width / (float)g_dec.height;
@@ -2388,16 +2277,10 @@ static int cb_display_picture(void* user, void* disp_info) {
      * In PREPARE/PAUSED we still blit (so the latest frame is in post_bufs[pidx]
      * ready to be posted on the next resume) but skip the post itself, leaving
      * displayable 33 free for splash or whatever else owns it. */
-    int dirty[4] = { 0, 0, DISP_W, DISP_H };
-    /* Skip post during the 2s boot splash window so decoded frames don't
-     * overwrite fifthBro immediately. Heartbeat in apply_stage_signals
-     * re-posts the splash buffer every ~50ms during the window. */
-    if (g_render_stage == STAGE_RENDERING &&
-        (now_us() / 1000ULL) >= g_boot_splash_until_ms) {
+    int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
+    if (g_render_stage == STAGE_RENDERING) {
         screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx], 1, dirty, 0);
         screen_flush_context(g_dec.scr_ctx, 0);
-        g_last_posted_pidx = pidx;
-        g_last_post_ms     = now_us() / 1000ULL;
     }
     clock_gettime(CLOCK_MONOTONIC, &ts3);
 
@@ -2558,13 +2441,6 @@ int run_h264_mode(int argc, char** argv) {
         if (prepare_mode) {
             g_render_stage = STAGE_PREPARE;
         }
-        /* skip_boot_splash=1 (set by daemon when the boot splash has already
-         * been used this boot) pre-flags the splash as shown so this h264
-         * child doesn't replay fifthBro after disconnect+reconnect. */
-        if (get_arg_f(argc, argv, "skip_boot_splash", 0.0f) > 0.5f) {
-            g_boot_splash_shown_in_session = 1;
-            LOG("h264: skip_boot_splash=1 — fifthBro splash suppressed this session\n");
-        }
         signal(SIGUSR1, on_sigusr1);
         signal(SIGUSR2, on_sigusr2);
         LOG("h264 stage=%s (SIGUSR1=resume SIGUSR2=pause SIGTERM=exit)\n",
@@ -2592,14 +2468,22 @@ int run_h264_mode(int argc, char** argv) {
     /* Open SHM */
     LOG("waiting for SHM %s...\n", CLUSTER_SHM_NAME);
     int sfd = -1;
-    while (sfd < 0) { sfd = shm_open(CLUSTER_SHM_NAME, O_RDONLY, 0); usleep(500000); }
+    while (sfd < 0) { sfd = shm_open(CLUSTER_SHM_NAME, O_RDWR, 0); usleep(500000); }
     cluster_h264_shm_t* shm = (cluster_h264_shm_t*)mmap(NULL, sizeof(*shm),
-        PROT_READ, MAP_SHARED, sfd, 0);
+        PROT_READ | PROT_WRITE, MAP_SHARED, sfd, 0);
     close(sfd);
     if (shm == MAP_FAILED) { perror("mmap"); return 1; }
 
     while (shm->magic != CLUSTER_SHM_MAGIC) usleep(100000);
     LOG("SHM active\n");
+
+    /* Signal to gal_cluster.so that a new reader has attached. gal_cluster
+     * polls this bit and, when set, sends 0x8002 Stop + 0x8001 Start to
+     * cluster ch=14 to force the phone's encoder to emit a fresh SPS+PPS+IDR.
+     * Without this, a mid-stream cluster restart sees only P-slices and the
+     * H.264 parser never calls BeginSequence — setup_screen never runs and
+     * disp 33 never gets claimed. gal_cluster clears the bit after firing. */
+    shm->flags |= CLUSTER_SHM_FLAG_NEED_IDR;
 
     /* Dump mode */
     if (dump_mode) {

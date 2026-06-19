@@ -3120,10 +3120,12 @@ static void dummy_on_channel_opened(void* self, uint8_t ch) {
                 log_line("[gal_cluster] queueOutgoing: 0x8003 (12B, on-open) -> cluster ch=14\n");
             }
         }
-        /* Start fake-main thread when FAKE_MAIN_PROJECTED mode is on.
-         * Thread itself gates per-tick on g_hmi_focus_projected so it only
-         * fires when gal0 has gone silent. Idempotent. */
-        if ((g_fake_main_projected || g_keepalive_ms > 0) && !g_keepalive_running) {
+        /* Start keepalive thread unconditionally so the NEED_IDR Start follow-up
+         * (g_pending_start_ticks decrement) and restart-on-return follow-ups
+         * always run, even when neither FAKE_MAIN_PROJECTED nor KEEPALIVE_MS are
+         * set. The thread's own per-tick logic still gates the keepalive fires
+         * on g_hmi_focus_projected. Idempotent. */
+        if (!g_keepalive_running) {
             g_keepalive_running = 1;
             if (pthread_create(&g_keepalive_tid, NULL, keepalive_thread_fn, NULL) != 0) {
                 log_line("[gal_cluster] keepalive: pthread_create failed errno=%d\n", errno);
@@ -3298,6 +3300,31 @@ static int dummy_cluster_route(void* self, uint32_t ch, uint16_t type, void* dat
 
                 if (plen > 0 && g_cluster_shm) {
                     cluster_h264_shm_t* shm = g_cluster_shm;
+
+                    /* NEED_IDR: cluster reader has just attached and is sitting
+                     * in a P-slice-only stream. Force the phone to restart the
+                     * cluster encoder so it emits a fresh SPS+PPS+IDR. Uses the
+                     * same Stop+Start mechanism the restart-on-return path uses
+                     * (g_pending_start_ticks defers the Start until the Stop
+                     * has settled). */
+                    if ((shm->flags & CLUSTER_SHM_FLAG_NEED_IDR) &&
+                        g_cluster_ch14_opened && real_queue_outgoing && g_router_ptr) {
+                        shm->flags &= ~CLUSTER_SHM_FLAG_NEED_IDR;
+                        uint8_t* stop = (uint8_t*)malloc(2);
+                        if (stop) {
+                            stop[0] = 0x80; stop[1] = 0x02;
+                            hook_queue_outgoing(g_router_ptr, 14, stop, 2);
+                        }
+                        int delay_ms = (g_stopstart_delay_ms > 0) ? g_stopstart_delay_ms
+                                                                  : STOPSTART_DEFAULT_DELAY_MS;
+                        int interval_ms = g_fake_main_projected ? FAKE_MAIN_INTERVAL_MS
+                                          : (g_keepalive_ms > 0 ? g_keepalive_ms : FAKE_MAIN_INTERVAL_MS);
+                        g_pending_start_ticks = (delay_ms + interval_ms - 1) / interval_ms;
+                        if (g_pending_start_ticks < 1) g_pending_start_ticks = 1;
+                        log_line("[gal_cluster] NEED_IDR seen — fired 0x8002 Stop, Start pending in ~%dms (%d ticks)\n",
+                                 delay_ms, g_pending_start_ticks);
+                    }
+
                     uint32_t wp = shm->write_pos;
                     int remain = CLUSTER_RING_SIZE - (int)wp;
                     if (plen <= remain) {
