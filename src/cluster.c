@@ -99,6 +99,18 @@ static int DISP_H = DISP_H_DEFAULT;
  * Enumerates all displays in the application context, picks the one whose
  * integer SCREEN_PROPERTY_ID matches DISP_ID_TARGET (=33 on MH2P/Macan),
  * then reads its SCREEN_PROPERTY_SIZE. */
+/* Enumerate physical displays and pick the cluster.
+ * On Porsche MH2P there are two displays: HMI (widest, e.g. 1920×720) and
+ * cluster (narrower, e.g. 1280×860 Cayenne / ~540×480 Macan). The cluster
+ * is whichever has a smaller width than the widest.
+ *
+ * target_id is honored if SCREEN_PROPERTY_ID happens to match (rarely does
+ * on this hardware — display IDs are physical indices, not displayable IDs).
+ * Otherwise fall back to the non-widest heuristic. Returns 0 on success.
+ *
+ * Diagnostic: logs every display seen via printf so the daemon log shows
+ * exactly what the hardware reports — easier to debug if detection picks
+ * the wrong one on a new car. */
 static int detect_disp_size(int target_id, int* out_w, int* out_h) {
     screen_context_t ctx = NULL;
     if (screen_create_context(&ctx, SCREEN_APPLICATION_CONTEXT) != 0)
@@ -124,23 +136,38 @@ static int detect_disp_size(int target_id, int* out_w, int* out_h) {
         return -4;
     }
 
-    int found = -5;
+    int hmi_w = 0;
+    int by_id_w = 0, by_id_h = 0;
     for (int i = 0; i < n_displays; i++) {
-        int id = 0;
-        if (screen_get_display_property_iv(displays[i], SCREEN_PROPERTY_ID,
-                                           &id) != 0)
-            continue;
-        if (id != target_id) continue;
-
+        int id = -1;
         int size[2] = { 0, 0 };
-        if (screen_get_display_property_iv(displays[i], SCREEN_PROPERTY_SIZE,
-                                           size) == 0
-                && size[0] >= 64 && size[1] >= 64) {
+        screen_get_display_property_iv(displays[i], SCREEN_PROPERTY_ID,   &id);
+        screen_get_display_property_iv(displays[i], SCREEN_PROPERTY_SIZE, size);
+        printf("    detect_disp: disp[%d] id=%d size=%dx%d\n", i, id, size[0], size[1]);
+        if (size[0] > hmi_w) hmi_w = size[0];
+        if (id == target_id && size[0] >= 64 && size[1] >= 64) {
+            by_id_w = size[0]; by_id_h = size[1];
+        }
+    }
+
+    int found = -5;
+    if (by_id_w > 0 && by_id_h > 0) {
+        *out_w = by_id_w;
+        *out_h = by_id_h;
+        found = 0;
+    } else {
+        /* No display matched target_id (typical on MH2P). Pick the first
+         * non-widest display with sane dimensions — that's the cluster. */
+        for (int i = 0; i < n_displays; i++) {
+            int size[2] = { 0, 0 };
+            screen_get_display_property_iv(displays[i], SCREEN_PROPERTY_SIZE, size);
+            if (size[0] < 64 || size[1] < 64) continue;
+            if (size[0] == hmi_w) continue;
             *out_w = size[0];
             *out_h = size[1];
             found = 0;
+            break;
         }
-        break;
     }
 
     free(displays);
@@ -566,21 +593,21 @@ static int daemon_run(int argc, char **argv) {
                 printf("[daemon] prepare: pid=%d args='%s'\n", (int)child_pid, cmdline);
             }
 
-        /* ── START: same as prepare-then-resume. If no child, spawn one in
-         *           PREPARE; then SIGUSR1 to flip to RENDERING (which runs
-         *           the in-child boot splash blit). If a child is already
-         *           up, just SIGUSR1. */
+        /* ── START: direct spawn (no PREPARE arg, no SIGUSR1). Used by the
+         *           CarPlay/mirror path which has no PREPARE/RENDERING
+         *           distinction. The h264 path uses the explicit
+         *           prepare+resume sequence from Java instead. */
         } else if (strncmp(line, "start", 5) == 0) {
             const char *extra = line + 5;
             while (*extra == ' ') extra++;
             char cmdline[512];
             int n;
             if (*extra && *default_args)
-                n = snprintf(cmdline, sizeof(cmdline), "%s %s prepare", default_args, extra);
+                n = snprintf(cmdline, sizeof(cmdline), "%s %s", default_args, extra);
             else if (*extra)
-                n = snprintf(cmdline, sizeof(cmdline), "%s prepare", extra);
+                n = snprintf(cmdline, sizeof(cmdline), "%s", extra);
             else
-                n = snprintf(cmdline, sizeof(cmdline), "%s prepare", default_args);
+                n = snprintf(cmdline, sizeof(cmdline), "%s", default_args);
             if (n < 0 || n >= (int)sizeof(cmdline)) cmdline[sizeof(cmdline)-1] = '\0';
 
             if (splash_pid > 0) {
@@ -588,18 +615,13 @@ static int daemon_run(int argc, char **argv) {
                 waitpid(splash_pid, NULL, 0);
                 splash_pid = -1;
             }
-            if (child_pid <= 0) {
-                child_pid = daemon_start_mirror(self, cmdline);
-                printf("[daemon] start: spawned pid=%d args='%s'\n", (int)child_pid, cmdline);
-                /* Give the child a moment to reach STAGE_PREPARE before signaling.
-                 * If we SIGUSR1 too early, the handler isn't installed yet. */
-                usleep(200 * 1000);
-            }
             if (child_pid > 0) {
-                printf("[daemon] start: SIGUSR1 pid=%d (resume to RENDERING)\n",
-                       (int)child_pid);
-                kill(child_pid, SIGUSR1);
+                kill(child_pid, SIGTERM);
+                waitpid(child_pid, NULL, 0);
+                child_pid = -1;
             }
+            child_pid = daemon_start_mirror(self, cmdline);
+            printf("[daemon] start: pid=%d args='%s'\n", (int)child_pid, cmdline);
 
         } else {
             printf("[daemon] unknown command '%s' (use: prepare/start [args] / resume / pause / stop)\n", line);
@@ -1566,7 +1588,12 @@ static int setup_screen(int width, int height) {
     }
 
     /* post_win = RGBX8888 displayable. RGBA siblings will be mixer outputs. */
-    int win_size[2] = { width, height };
+    /* post_win sized to the detected displayable (DISP_W × DISP_H), not the
+     * H.264 stream size. Reason: on cars where the cluster panel aspect
+     * differs from 16:9, a stream-sized post_win shows only a top-left crop
+     * of the panel (Macan ~540×480 effect). Sizing to DISP lets screen_blit
+     * scale the stream onto the displayable. */
+    int win_size[2] = { DISP_W, DISP_H };
     int pfmt = SCREEN_FORMAT_RGBX8888;       /* 8 — matches Option A egl_win that bound */
 #ifdef USE_SCREEN_BLIT
     /* v3: post_win must accept compositor writes (screen_blit destination)
@@ -1615,6 +1642,22 @@ static int setup_screen(int width, int height) {
     }
     screen_get_window_property_pv(g_dec.post_win, SCREEN_PROPERTY_RENDER_BUFFERS,
                                   (void**)g_dec.post_bufs);
+
+    /* Pre-clear all post_bufs to black. With DISP-sized post_win and a
+     * letterbox-mode screen_blit, the source stream only writes the inner
+     * aspect-fit rect; the top/bottom (or side) bars stay at whatever the
+     * buffer memory contained at allocation. Filling once with black keeps
+     * the letterbox bars black across buffer rotation. */
+    for (int i = 0; i < MAX_SURFACES; i++) {
+        void* p = NULL;
+        int   s = 0;
+        screen_get_buffer_property_pv(g_dec.post_bufs[i], SCREEN_PROPERTY_POINTER, &p);
+        screen_get_buffer_property_iv(g_dec.post_bufs[i], SCREEN_PROPERTY_STRIDE,  &s);
+        if (p && s > 0) {
+            memset(p, 0, (size_t)s * (size_t)DISP_H);
+        }
+    }
+
     /* Verify ID_STRING and VISIBLE actually took effect — read back. */
     char idbuf[16] = {0};
     int got_vis = 0;
@@ -2100,7 +2143,7 @@ static void apply_stage_signals(void) {
                 int blit_attribs[] = { SCREEN_BLIT_END };
                 br = screen_blit(g_dec.scr_ctx, g_dec.post_bufs[pidx],
                                  g_dec.boot_pix_buf, blit_attribs);
-                int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
+                int dirty[4] = { 0, 0, DISP_W, DISP_H };
                 screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx],
                                    1, dirty, 0);
             }
@@ -2120,7 +2163,7 @@ static void apply_stage_signals(void) {
             int blit_attribs[] = { SCREEN_BLIT_END };
             int br = screen_blit(g_dec.scr_ctx, g_dec.post_bufs[pidx],
                                  g_dec.canim_pix_buf, blit_attribs);
-            int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
+            int dirty[4] = { 0, 0, DISP_W, DISP_H };
             screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx],
                                1, dirty, 0);
             screen_flush_context(g_dec.scr_ctx, 0);
@@ -2188,8 +2231,9 @@ static int cb_display_picture(void* user, void* disp_info) {
      * larger YV12 buffer. Destination = post_win render buffer (xres × yres,
      * defaulting to the source size if not set). */
     int sx = 0, sy = 0, sw = g_dec.width, sh = g_dec.height;
-    int dst_w = (g_h264_args.xres > 0) ? g_h264_args.xres : g_dec.width;
-    int dst_h = (g_h264_args.yres > 0) ? g_h264_args.yres : g_dec.height;
+    /* Default dst rect to the displayable size (post_win is DISP-sized). */
+    int dst_w = (g_h264_args.xres > 0) ? g_h264_args.xres : DISP_W;
+    int dst_h = (g_h264_args.yres > 0) ? g_h264_args.yres : DISP_H;
     int dx = 0, dy = 0, dw = dst_w, dh = dst_h;
     {
         float src_ar = (float)g_dec.width / (float)g_dec.height;
@@ -2277,7 +2321,7 @@ static int cb_display_picture(void* user, void* disp_info) {
      * In PREPARE/PAUSED we still blit (so the latest frame is in post_bufs[pidx]
      * ready to be posted on the next resume) but skip the post itself, leaving
      * displayable 33 free for splash or whatever else owns it. */
-    int dirty[4] = { 0, 0, g_dec.width, g_dec.height };
+    int dirty[4] = { 0, 0, DISP_W, DISP_H };
     if (g_render_stage == STAGE_RENDERING) {
         screen_post_window(g_dec.post_win, g_dec.post_bufs[pidx], 1, dirty, 0);
         screen_flush_context(g_dec.scr_ctx, 0);
