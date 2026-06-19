@@ -785,6 +785,24 @@ int main(int argc, char **argv) {
     }
     int use_shmem = (strcmp(capture, "shmem") == 0);
 
+    /* fifthBro splash before mirror takes disp 33. Fork a short-lived child
+     * that runs the same binary in `capture=boot_splash duration_s=2`
+     * (= run_idle_logo with 2s sleep), then waitpid so our mirror init
+     * doesn't race the splash for disp 33. Skips if Java passed
+     * skip_boot_splash=1 (reserved for future use; not set today). */
+    if ((int)get_arg_f(argc, argv, "skip_boot_splash", 0.0f) == 0) {
+        pid_t bp = fork();
+        if (bp == 0) {
+            char *bargv[] = {
+                argv[0], "verbose=2", "capture=boot_splash", "duration_s=2", NULL
+            };
+            execv(argv[0], bargv);
+            _exit(1);
+        } else if (bp > 0) {
+            waitpid(bp, NULL, 0);
+        }
+    }
+
     /* mode: accept both positional ("fill") and key=value ("mode=fill") */
     const char *mode = "letter";
     if (argc > 1 && strchr(argv[1], '=') == NULL)
