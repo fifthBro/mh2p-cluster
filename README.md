@@ -8,7 +8,7 @@ Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrum
 
 > **Status:** Beta (v1_main) — Testing compatibility across Porsche Cayenne, Macan, Panamera and 911
 
-> **Download** [latest release](https://github.com/fifthBro/mh2p-cluster/raw/refs/heads/main/builds/ClusterIntegration_v1_main_d433c92.zip)
+> **Download** [latest release](https://github.com/fifthBro/mh2p-cluster/raw/refs/heads/main/builds/ClusterIntegration_v0020_beta2_candidate_9c621f6.zip)
 
 ---
 
@@ -87,9 +87,9 @@ Maps Android Auto `eventCode` (1–19) + `turnSide` + `angle` + `num` to a BAP m
 
 ### Distance Update Pipeline
 
-1. **Throttle check** — minimum ms between sends per proximity zone (veryFar=2000ms down to now=100ms). In "always" bargraph mode, bargraph-only updates bypass the throttle.
+1. **Throttle check** — minimum ms between sends per proximity zone (veryFar=2000ms  to now=100ms). In "always" bargraph mode, bargraph-only updates bypass the throttle.
 2. **Maneuver change detection** — key = `road|eventCode|turnSide`. New maneuver resets baseline distance and bypasses throttle for first update.
-3. **Distance threshold** — minimum change required per zone (100m at veryFar down to 5m at now) before text updates. Bargraph always updates for smooth fill.
+3. **Distance threshold** — minimum change required per zone (100m at veryFar  to 5m at now) before text updates. Bargraph always updates for smooth fill.
 4. **Unit conversion** — metric: m below 100m, tenths of km to 19.9km. Imperial: yards below 161m, tenths of miles to 9.9mi.
 5. **Bargraph** — `(1 − distance/maneuverInitialDistance) × 100`, clamped 0–100.
 6. **Roundabout traversal** — force distance/bargraph to 0 during CONTINUE events to suppress erratic display inside roundabout.
