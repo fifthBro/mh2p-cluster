@@ -256,6 +256,39 @@ static int g_stopstart_delay_ms = 200;
 #define STOPSTART_DEFAULT_DELAY_MS 200
 static volatile int g_pending_start_ticks = 0;
 
+/* NEED_IDR deferred-trigger state. When cluster.c sets CLUSTER_SHM_FLAG_NEED_IDR
+ * we DON'T fire Stop+Start immediately — the phone may already be in the middle
+ * of emitting a natural SPS+PPS+IDR sequence (case where gal just restarted on
+ * phone reconnect). Instead we mark a deadline; if an IDR NAL flows through SHM
+ * before the deadline, we clear the flag without firing (phone is fine). If the
+ * deadline expires with the flag still set, the keepalive thread fires the
+ * Stop+Start (case where phone is in mid-GOP and won't naturally re-key). */
+#define NEED_IDR_DEFER_MS  1500
+static volatile uint64_t g_need_idr_deadline_us = 0;
+
+static uint64_t gc_now_us(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000ULL;
+}
+
+/* Scan an Annex-B H.264 payload for an IDR NAL (nal_unit_type == 5). Looks
+ * for 00 00 00 01 or 00 00 01 start codes followed by a byte whose low 5
+ * bits are 5. Returns 1 if found, 0 otherwise. */
+static int gc_payload_has_idr(const uint8_t* p, int len) {
+    if (!p || len < 5) return 0;
+    for (int i = 0; i + 4 < len; i++) {
+        int sc = 0;
+        if (p[i] == 0 && p[i+1] == 0 && p[i+2] == 0 && p[i+3] == 1) sc = 4;
+        else if (p[i] == 0 && p[i+1] == 0 && p[i+2] == 1) sc = 3;
+        if (!sc) continue;
+        if (i + sc >= len) break;
+        if ((p[i + sc] & 0x1F) == 5) return 1;
+        i += sc;  /* skip past start code, loop will advance further */
+    }
+    return 0;
+}
+
 
 /* NvMedia function pointers (resolved in constructor, used by decoder process) */
 typedef void* (*fn_nv_generic)(void);
@@ -2552,7 +2585,7 @@ void _ZN13MessageRouter32populateServiceDiscoveryResponseEP24ServiceDiscoveryRes
                     memcpy(mod_buf + pos, orig_buf, (size_t)orig_size); pos += (size_t)orig_size;
                     /* GAL_CLUSTER_RES selects codec_resolution: 480→1, 720→2, 1080→3.
                      * Default 480p — keeps per-frame copy under realtime budget on Tegra K1. */
-                    uint32_t res_req = get_env_u32("GAL_CLUSTER_RES", 720);
+                    uint32_t res_req = get_env_u32("GAL_CLUSTER_RES", 480);
                     uint8_t codec_res = 1;
                     if (res_req == 720)  codec_res = 2;
                     else if (res_req == 1080) codec_res = 3;
@@ -3306,7 +3339,7 @@ static int dummy_cluster_route(void* self, uint32_t ch, uint16_t type, void* dat
                      * cluster encoder so it emits a fresh SPS+PPS+IDR. Uses the
                      * same Stop+Start mechanism the restart-on-return path uses
                      * (g_pending_start_ticks defers the Start until the Stop
-                     * has settled). */
+                     * has settled). v19 behaviour: fire immediately. */
                     if ((shm->flags & CLUSTER_SHM_FLAG_NEED_IDR) &&
                         g_cluster_ch14_opened && real_queue_outgoing && g_router_ptr) {
                         shm->flags &= ~CLUSTER_SHM_FLAG_NEED_IDR;

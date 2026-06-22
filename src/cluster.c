@@ -1606,11 +1606,10 @@ static int setup_screen(int width, int height) {
     }
 
     /* post_win = RGBX8888 displayable. RGBA siblings will be mixer outputs. */
-    /* post_win sized to the detected displayable (DISP_W × DISP_H), not the
-     * H.264 stream size. Reason: on cars where the cluster panel aspect
-     * differs from 16:9, a stream-sized post_win shows only a top-left crop
-     * of the panel (Macan ~540×480 effect). Sizing to DISP lets screen_blit
-     * scale the stream onto the displayable. */
+    /* post_win sized to the detected (or argv-overridden) cluster panel. The
+     * H.264 stream may be smaller than the panel (e.g. 480p stream → 1280×860
+     * panel); our blit upscales it via `mode=stretch` so the panel is always
+     * fully covered. xres=/yres= argv override the autodetected DISP_W/DISP_H. */
     int win_size[2] = { DISP_W, DISP_H };
     int pfmt = SCREEN_FORMAT_RGBX8888;       /* 8 — matches Option A egl_win that bound */
 #ifdef USE_SCREEN_BLIT
@@ -1660,22 +1659,6 @@ static int setup_screen(int width, int height) {
     }
     screen_get_window_property_pv(g_dec.post_win, SCREEN_PROPERTY_RENDER_BUFFERS,
                                   (void**)g_dec.post_bufs);
-
-    /* Pre-clear all post_bufs to black. With DISP-sized post_win and a
-     * letterbox-mode screen_blit, the source stream only writes the inner
-     * aspect-fit rect; the top/bottom (or side) bars stay at whatever the
-     * buffer memory contained at allocation. Filling once with black keeps
-     * the letterbox bars black across buffer rotation. */
-    for (int i = 0; i < MAX_SURFACES; i++) {
-        void* p = NULL;
-        int   s = 0;
-        screen_get_buffer_property_pv(g_dec.post_bufs[i], SCREEN_PROPERTY_POINTER, &p);
-        screen_get_buffer_property_iv(g_dec.post_bufs[i], SCREEN_PROPERTY_STRIDE,  &s);
-        if (p && s > 0) {
-            memset(p, 0, (size_t)s * (size_t)DISP_H);
-        }
-    }
-
     /* Verify ID_STRING and VISIBLE actually took effect — read back. */
     char idbuf[16] = {0};
     int got_vis = 0;
