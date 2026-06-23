@@ -208,26 +208,30 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
      * Configuration — reads same JSON config as AndroidAutoClusterIntegration
      * ============================================================ */
 
-    private static final String CONFIG_RESOURCE = "/cluster_config.json";
+    private static final String CONFIG_FILE_NAME    = "cluster_config.json";
+    private static final String CONFIG_INSTALLED    = "/mnt/app/eso/bin/apps/cluster/cluster_config.json";
 
     public void loadConfig() {
         try {
-            /* Try external config first (USB/SD), then JAR embedded */
+            /* Lookup precedence:
+             *   1. External media (USB/SD) — user override, see loadExternalConfigIfExists
+             *   2. Installed file at /mnt/app/eso/bin/apps/cluster/cluster_config.json
+             *      — written by install.sh from the deploy package
+             * The JAR no longer embeds this file. */
             String json = loadExternalConfigIfExists();
             if (json == null) {
-                java.io.InputStream is = getClass().getResourceAsStream(CONFIG_RESOURCE);
-                if (is == null) {
-                    logCluster("CONFIG: " + CONFIG_RESOURCE + " not found in JAR");
+                java.io.File f = new java.io.File(CONFIG_INSTALLED);
+                if (!f.exists() || !f.canRead()) {
+                    logCluster("CONFIG: " + CONFIG_INSTALLED + " not found, using defaults");
                     return;
                 }
-                java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(is));
+                java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(f));
                 StringBuffer sb = new StringBuffer();
                 String line;
                 while ((line = reader.readLine()) != null) sb.append(line);
                 reader.close();
-                is.close();
                 json = sb.toString();
-                logCluster("CONFIG: Loaded from JAR");
+                logCluster("CONFIG: Loaded from " + CONFIG_INSTALLED);
             }
             configJsonCache = json;  /* cache for country lookups */
 
@@ -1625,7 +1629,10 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
             return;
         }
         try {
-            java.io.FileWriter fw = new java.io.FileWriter(mirrorFifo, false);
+            /* APPEND mode so back-to-back commands (e.g. prepare → resume) don't
+             * overwrite each other before the daemon polls. Daemon reads
+             * line-by-line and processes each. */
+            java.io.FileWriter fw = new java.io.FileWriter(mirrorFifo, true);
             fw.write(cmd + "\n");
             fw.flush();
             fw.close();

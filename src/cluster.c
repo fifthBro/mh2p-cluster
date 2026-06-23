@@ -435,7 +435,11 @@ static pid_t daemon_start_mirror(const char *self, const char *cmdline) {
 
 static int daemon_run(int argc, char **argv) {
     int i;
-    int poll_ms = (int)(get_arg_f(argc, argv, "poll", 2.0f) * 1000);
+    /* Poll cluster_ctl every 500ms (was 2.0s). Java may write back-to-back
+     * commands (e.g. prepare → resume within 2s) and if we polled slower
+     * than that, only the latest survived in the file. 500ms is fast enough
+     * to catch every command Java sends with normal pacing. */
+    int poll_ms = (int)(get_arg_f(argc, argv, "poll", 0.5f) * 1000);
 
     /* default mirror args: everything after "daemon", excluding daemon control args.
      * No xres/yres injection — each child runs its own detect_disp_size in
@@ -493,25 +497,44 @@ static int daemon_run(int argc, char **argv) {
             }
         }
 
-        /* read control file */
+        /* Read ALL pending commands from the control file. Java writes in
+         * APPEND mode so multiple commands can accumulate between our polls
+         * (e.g. prepare → resume within 500ms). Read all lines into a local
+         * buffer, then truncate, then process each line in order. */
         FILE *f = fopen(DAEMON_CTL, "r");
         if (!f) continue;
-        char line[512];
-        int got = (fgets(line, sizeof(line), f) != NULL);
+        char all_cmds[8192];
+        size_t total_read = fread(all_cmds, 1, sizeof(all_cmds) - 1, f);
         fclose(f);
+        if (total_read == 0) continue;
+        all_cmds[total_read] = '\0';
 
-        if (!got) continue;
-
-        /* strip trailing whitespace */
-        char *end = line + strlen(line) - 1;
-        while (end >= line && (*end == '\n' || *end == '\r' || *end == ' ')) *end-- = '\0';
-        if (strlen(line) == 0) continue;
-
-        /* truncate the file so we don't re-process the same command */
+        /* Truncate the file before processing so any concurrent Java write
+         * after this point gets a fresh empty file. */
         FILE *clr = fopen(DAEMON_CTL, "w");
         if (clr) fclose(clr);
 
-        printf("[daemon] cmd: '%s' (pid=%d)\n", line, (int)child_pid);
+        /* Process each line in order. We loop, picking off lines, and
+         * letting the existing per-command logic below handle each. */
+        char *cursor = all_cmds;
+        while (*cursor) {
+            char *line_start = cursor;
+            char *nl = strchr(cursor, '\n');
+            if (nl) { *nl = '\0'; cursor = nl + 1; }
+            else    { cursor = line_start + strlen(line_start); }
+
+            /* Use a local `line` buffer so the existing per-cmd code path
+             * remains unchanged below. */
+            char line[512];
+            strncpy(line, line_start, sizeof(line) - 1);
+            line[sizeof(line) - 1] = '\0';
+
+            /* strip trailing whitespace */
+            char *end = line + strlen(line) - 1;
+            while (end >= line && (*end == '\r' || *end == ' ')) *end-- = '\0';
+            if (strlen(line) == 0) continue;
+
+            printf("[daemon] cmd: '%s' (pid=%d)\n", line, (int)child_pid);
 
         /* ── STOP: SIGTERM child, then spawn canim splash. Only spawn canim
          *           if there was actually a child to stop — otherwise we'd
@@ -626,6 +649,7 @@ static int daemon_run(int argc, char **argv) {
         } else {
             printf("[daemon] unknown command '%s' (use: prepare/start [args] / resume / pause / stop)\n", line);
         }
+        }  /* end while(*cursor) — next pending command from the same poll */
     }
 
     return 0;

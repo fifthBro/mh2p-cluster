@@ -256,14 +256,14 @@ static int g_stopstart_delay_ms = 200;
 #define STOPSTART_DEFAULT_DELAY_MS 200
 static volatile int g_pending_start_ticks = 0;
 
-/* NEED_IDR deferred-trigger state. When cluster.c sets CLUSTER_SHM_FLAG_NEED_IDR
- * we DON'T fire Stop+Start immediately — the phone may already be in the middle
- * of emitting a natural SPS+PPS+IDR sequence (case where gal just restarted on
- * phone reconnect). Instead we mark a deadline; if an IDR NAL flows through SHM
- * before the deadline, we clear the flag without firing (phone is fine). If the
- * deadline expires with the flag still set, the keepalive thread fires the
- * Stop+Start (case where phone is in mid-GOP and won't naturally re-key). */
-#define NEED_IDR_DEFER_MS  1500
+/* NEED_IDR delayed-fire state. When cluster.c sets CLUSTER_SHM_FLAG_NEED_IDR
+ * and gal_cluster sees the first NAL on ch=14, we schedule a Stop+Start to
+ * fire at T+NEED_IDR_FIRE_MS. The fire is UNCONDITIONAL — we always send it.
+ * The 500ms delay gives the phone time to complete any natural SPS+PPS+IDR
+ * sequence it's already started, so our Stop doesn't land mid-sequence and
+ * break the stream. After the delay, phone re-keys cleanly whether it was
+ * mid-stream (recovery) or fresh-attach (extra re-key, harmless). */
+#define NEED_IDR_FIRE_MS  500
 static volatile uint64_t g_need_idr_deadline_us = 0;
 
 static uint64_t gc_now_us(void) {
@@ -3072,6 +3072,28 @@ static void* keepalive_thread_fn(void* arg) {
         if (!g_keepalive_running) break;
         if (!real_queue_outgoing || !g_router_ptr) continue;
 
+        /* NEED_IDR delayed fire: schedule was set in the SHM write path when
+         * the first NAL arrived. Fires unconditionally (no IDR-sniff gate)
+         * at the scheduled time. Phone re-keys after this Stop+Start. */
+        if (g_need_idr_deadline_us != 0 && g_cluster_ch14_opened &&
+            gc_now_us() >= g_need_idr_deadline_us) {
+            g_need_idr_deadline_us = 0;
+            if (g_cluster_shm) {
+                g_cluster_shm->flags &= ~CLUSTER_SHM_FLAG_NEED_IDR;
+            }
+            uint8_t* stop = (uint8_t*)malloc(2);
+            if (stop) {
+                stop[0] = 0x80; stop[1] = 0x02;
+                hook_queue_outgoing(g_router_ptr, 14, stop, 2);
+            }
+            int delay_ms = (g_stopstart_delay_ms > 0) ? g_stopstart_delay_ms
+                                                      : STOPSTART_DEFAULT_DELAY_MS;
+            g_pending_start_ticks = (delay_ms + interval_ms - 1) / interval_ms;
+            if (g_pending_start_ticks < 1) g_pending_start_ticks = 1;
+            log_line("[gal_cluster] NEED_IDR fire — sent 0x8002 Stop, Start pending in ~%dms (%d ticks)\n",
+                     delay_ms, g_pending_start_ticks);
+        }
+
         /* RESTART_ON_RETURN follow-up: queueOutgoing scheduled the
          * PROJECTED tick countdown after firing NATIVE. Decrement each
          * tick; fire when reaches 1, then clear. Gives phone ~500ms in
@@ -3334,28 +3356,22 @@ static int dummy_cluster_route(void* self, uint32_t ch, uint16_t type, void* dat
                 if (plen > 0 && g_cluster_shm) {
                     cluster_h264_shm_t* shm = g_cluster_shm;
 
-                    /* NEED_IDR: cluster reader has just attached and is sitting
-                     * in a P-slice-only stream. Force the phone to restart the
-                     * cluster encoder so it emits a fresh SPS+PPS+IDR. Uses the
-                     * same Stop+Start mechanism the restart-on-return path uses
-                     * (g_pending_start_ticks defers the Start until the Stop
-                     * has settled). v19 behaviour: fire immediately. */
+                    /* NEED_IDR (delayed always-fire): when cluster.c sets the
+                     * flag and the first NAL on ch=14 arrives, schedule a
+                     * Stop+Start to fire at T+NEED_IDR_FIRE_MS. The 500ms delay
+                     * gives the phone time to finish any natural SPS+PPS+IDR
+                     * sequence it's already started, so our Stop doesn't land
+                     * mid-sequence. After the delay, phone re-keys
+                     * unconditionally (handles both mid-stream P-slice recovery
+                     * and fresh attach; the extra re-key on fresh attach is
+                     * wasteful but harmless). The keepalive thread polls the
+                     * deadline every 33ms and fires when reached. */
                     if ((shm->flags & CLUSTER_SHM_FLAG_NEED_IDR) &&
-                        g_cluster_ch14_opened && real_queue_outgoing && g_router_ptr) {
-                        shm->flags &= ~CLUSTER_SHM_FLAG_NEED_IDR;
-                        uint8_t* stop = (uint8_t*)malloc(2);
-                        if (stop) {
-                            stop[0] = 0x80; stop[1] = 0x02;
-                            hook_queue_outgoing(g_router_ptr, 14, stop, 2);
-                        }
-                        int delay_ms = (g_stopstart_delay_ms > 0) ? g_stopstart_delay_ms
-                                                                  : STOPSTART_DEFAULT_DELAY_MS;
-                        int interval_ms = g_fake_main_projected ? FAKE_MAIN_INTERVAL_MS
-                                          : (g_keepalive_ms > 0 ? g_keepalive_ms : FAKE_MAIN_INTERVAL_MS);
-                        g_pending_start_ticks = (delay_ms + interval_ms - 1) / interval_ms;
-                        if (g_pending_start_ticks < 1) g_pending_start_ticks = 1;
-                        log_line("[gal_cluster] NEED_IDR seen — fired 0x8002 Stop, Start pending in ~%dms (%d ticks)\n",
-                                 delay_ms, g_pending_start_ticks);
+                        g_need_idr_deadline_us == 0) {
+                        g_need_idr_deadline_us = gc_now_us() +
+                                                 (uint64_t)NEED_IDR_FIRE_MS * 1000ULL;
+                        log_line("[gal_cluster] NEED_IDR seen — Stop+Start scheduled at T+%dms\n",
+                                 NEED_IDR_FIRE_MS);
                     }
 
                     uint32_t wp = shm->write_pos;

@@ -60,6 +60,9 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
     private static final String CLUSTER_LOG_FILE           = DEFAULT_LOG_PATH + "/" + LOG_FILE_NAME;
     private static final String CLUSTER_HASHED_LOG_FILE    = DEFAULT_LOG_PATH + "/" + HASHED_LOG_FILE_NAME;
     private static final String CLUSTER_CONFIG_FILE        = "/cluster_config.json";
+    /* Installed config path written by install.sh from the deploy package.
+     * The JAR no longer embeds this file; we read it from disk instead. */
+    private static final String CLUSTER_CONFIG_INSTALLED   = "/mnt/app/eso/bin/apps/cluster/cluster_config.json";
     private static final long   MAX_LOG_SIZE               = 1024 * 1024; // 1024KB
 
     // External storage mount points (config and logs are derived from these)
@@ -1261,10 +1264,12 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
         // First try to load from external media (USB/SD)
         String json = loadExternalConfigIfExists();
         
-        // If no external config, load from embedded resource
+        // If no external config, load from installed file (written by install.sh)
         if (json == null) {
-            json = loadEmbeddedConfig();
-            logCluster("CONFIG: Using embedded config (no external found)");
+            json = loadInstalledConfig();
+            if (json != null) {
+                logCluster("CONFIG: Using installed config at " + CLUSTER_CONFIG_INSTALLED);
+            }
         } else {
             logCluster("CONFIG: Using external config file");
         }
@@ -1308,36 +1313,32 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
     /**
      * Loads embedded config from JAR resources
      */
-    private String loadEmbeddedConfig() {
-        java.io.InputStream is = null;
+    /**
+     * Loads the installed config from /mnt/app/eso/bin/apps/cluster/cluster_config.json.
+     * install.sh extracts this file from the deploy package; the JAR no longer
+     * embeds it. Returns null if the file isn't present or unreadable, in
+     * which case callers fall back to compiled-in defaults.
+     */
+    private String loadInstalledConfig() {
         java.io.BufferedReader reader = null;
-
         try {
-            is = getClass().getResourceAsStream(CLUSTER_CONFIG_FILE);
-            if (is == null) {
-                logCluster("CONFIG: Embedded JSON file not found");
+            File f = new File(CLUSTER_CONFIG_INSTALLED);
+            if (!f.exists() || !f.canRead()) {
+                logCluster("CONFIG: " + CLUSTER_CONFIG_INSTALLED + " not present");
                 return null;
             }
-
-            // Read entire JSON into string
-            reader = new java.io.BufferedReader(new java.io.InputStreamReader(is));
+            reader = new java.io.BufferedReader(new java.io.FileReader(f));
             StringBuffer jsonContent = new StringBuffer();
             String line;
             while ((line = reader.readLine()) != null) {
                 jsonContent.append(line);
             }
-            logCluster("CONFIG: Loaded embedded config");
             return jsonContent.toString();
         } catch (Exception e) {
-            logCluster("CONFIG: Error loading embedded config: " + e.toString());
+            logCluster("CONFIG: Error loading installed config: " + e.toString());
             return null;
         } finally {
-            try {
-                if (reader != null) reader.close();
-                if (is != null) is.close();
-            } catch (Exception e) {
-                // Ignore close errors
-            }
+            try { if (reader != null) reader.close(); } catch (Exception e) { /* ignore */ }
         }
     }
     
@@ -3224,7 +3225,10 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
             return;
         }
         try {
-            java.io.FileWriter fw = new java.io.FileWriter(mirrorFifo, false);
+            /* APPEND mode so back-to-back commands (e.g. prepare → resume) don't
+             * overwrite each other before the daemon polls. Daemon reads
+             * line-by-line and processes each. */
+            java.io.FileWriter fw = new java.io.FileWriter(mirrorFifo, true);
             fw.write(cmd + "\n");
             fw.flush();
             fw.close();
