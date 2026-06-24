@@ -58,7 +58,12 @@
 /* loading the hook to enable. Macros at the bottom of this section     */
 /* skip the call entirely (no arg eval) when disabled.                  */
 /* ------------------------------------------------------------------ */
-#define LOG_FILE "/tmp/dio_cluster.log"
+#define LOG_FILE_NAME "dio_cluster.log"
+/* Same path priority as cluster_daemon.log and gal_cluster.log — external
+ * media (USB/SD) preferred over /tmp so logs persist. First writable wins. */
+static const char * const DIO_LOG_ROOTS[] = {
+    "/fs/usb0_0", "/fs/usb1_0", "/fs/sda0", "/fs/sdb0", "/tmp", NULL
+};
 static FILE *g_log = NULL;
 static pthread_mutex_t g_log_mtx = PTHREAD_MUTEX_INITIALIZER;
 static int g_log_enabled = 0;
@@ -68,10 +73,20 @@ static void log_init_from_env(void) {
     g_log_enabled = (v && *v && *v != '0') ? 1 : 0;
 }
 
+static FILE *dio_open_log(void) {
+    char path[256];
+    for (int i = 0; DIO_LOG_ROOTS[i]; i++) {
+        snprintf(path, sizeof(path), "%s/%s", DIO_LOG_ROOTS[i], LOG_FILE_NAME);
+        FILE *f = fopen(path, "a");
+        if (f) return f;
+    }
+    return NULL;
+}
+
 static void log_msg_impl(const char *fmt, ...) {
     pthread_mutex_lock(&g_log_mtx);
     if (!g_log) {
-        g_log = fopen(LOG_FILE, "a");
+        g_log = dio_open_log();
         if (!g_log) { pthread_mutex_unlock(&g_log_mtx); return; }
         setbuf(g_log, NULL);
     }

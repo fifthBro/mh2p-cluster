@@ -21,19 +21,31 @@
     "imperialSmallUnit": "auto",
     "destinationDisplayDuration": 5000,
     "enableMapRender": true,
-    "mirrorFifo": "/tmp/cluster_ctl",
-    "mirrorMode": "fill",
-    "mirrorZoomX": 1.0,
-    "mirrorZoomY": 1.0,
-    "mirrorPanX": 0.0,
-    "mirrorPanY": 0.0,
-    "aaClusterMode": "h264"
+    "aaClusterMode": "h264",
+    "mirror":   { "mode": "fill",   "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.0 },
+    "gal_h264": { "codecRes": 720,  "mode": "letter", "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.0 }
   },
-  "mirrorCarConfig": {
-    "5_3": { "name": "Cayenne E3",  "bargraphMode": "always",   "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02, "aaClusterMode": "h264" },
-    "6_8": { "name": "911 992",     "bargraphMode": "always",   "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02, "aaClusterMode": "h264" },
-    "6_2": { "name": "Panamera G2", "bargraphMode": "always",   "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02, "aaClusterMode": "h264" },
-    "4_1": { "name": "Macan",       "bargraphMode": "distance", "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02, "aaClusterMode": "h264" }
+  "carConfig": {
+    "5_3": {
+      "name": "Cayenne E3",  "bargraphMode": "always",   "aaClusterMode": "h264",
+      "mirror":   { "mode": "fill",   "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02 },
+      "gal_h264": { "codecRes": 720,  "mode": "letter", "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.0 }
+    },
+    "6_8": {
+      "name": "911 992",     "bargraphMode": "always",   "aaClusterMode": "h264",
+      "mirror":   { "mode": "fill",   "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02 },
+      "gal_h264": { "codecRes": 720,  "mode": "letter", "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.0 }
+    },
+    "6_2": {
+      "name": "Panamera G2", "bargraphMode": "always",   "aaClusterMode": "h264",
+      "mirror":   { "mode": "fill",   "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02 },
+      "gal_h264": { "codecRes": 480,  "mode": "letter", "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.0 }
+    },
+    "4_1": {
+      "name": "Macan",       "bargraphMode": "distance", "aaClusterMode": "h264",
+      "mirror":   { "mode": "fill",   "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02 },
+      "gal_h264": { "codecRes": 480,  "mode": "letter", "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.0 }
+    }
   },
   "dynamicThresholds": {
     "veryFar":    { "boundary": 5000, "distance": 100, "rateLimit": 2000 },

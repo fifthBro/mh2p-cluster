@@ -142,18 +142,31 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
 
     // Map rendering / AA mirror config
     private boolean enableMapRender      = false;
-    private String  mirrorFifo           = "/tmp/cluster_ctl";
+    /* Cluster daemon control file. Hardcoded — matches cluster.c's DAEMON_CTL.
+     * Was previously a JSON-configurable knob but no consumer honoured a
+     * different path (the daemon also hardcodes it), so the configurability
+     * was a no-op. */
+    private static final String CLUSTER_CTL = "/tmp/cluster_ctl";
     private String  mirrorMode           = "fill";
     private float   mirrorZoomX          = 1.0f;
     private float   mirrorZoomY          = 1.0f;
     private float   mirrorPanX           = 0.0f;
     private float   mirrorPanY           = 0.0f;
-    private String  mirrorCarConfigJson  = null;  // raw JSON block for per-car overrides
+    /* gal_h264 path — settings for the AA dedicated cluster H.264 stream.
+     * Loaded from config.gal_h264 / carConfig.<car>.gal_h264 in JSON,
+     * appended to the `prepare capture=h264` cmdline that goes to the
+     * cluster daemon. Default values match cluster.c's compiled-in fallbacks. */
+    private String  h264Mode             = "letter";
+    private float   h264ZoomX            = 1.0f;
+    private float   h264ZoomY            = 1.0f;
+    private float   h264PanX             = 0.0f;
+    private float   h264PanY             = 0.0f;
+    private String  carConfigJson  = null;  // raw JSON block for per-car overrides
     private boolean videoCurrentlyAvailable = false;
 
     // AA cluster pipeline mode: "h264" (default — dedicated cluster stream from
     // phone, decoded by cluster daemon) or "mirror" (HMI screen mirror fallback).
-    // Loaded from config JSON; overridable per-car in mirrorCarConfig.
+    // Loaded from config JSON; overridable per-car in carConfig.
     private String  aaClusterMode        = "h264";
 
     // Cluster pipeline lifecycle state. Java owns this — daemon is a dumb
@@ -799,7 +812,7 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
      */
 
     /**
-     * Resolves per-car config (bargraphMode, mirrorZoom, mirrorPan) from mirrorCarConfig JSON.
+     * Resolves per-car config (bargraphMode, mirrorZoom, mirrorPan) from carConfig JSON.
      * Key is "carClass_generation" e.g. "5_3" for Cayenne E3.
      * Only runs when sysServices is available. Global JSON values are used as fallback
      * when no matching car entry is found.
@@ -812,23 +825,22 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
             int generation = ct.generation();
             String key = carClass + "_" + generation;
 
-            if (mirrorCarConfigJson == null) {
-                logCluster("CAR_VARIANT: no mirrorCarConfig in JSON, using global values (class=" + carClass + " gen=" + generation + ")");
+            if (carConfigJson == null) {
+                logCluster("CAR_VARIANT: no carConfig in JSON, using global values (class=" + carClass + " gen=" + generation + ")");
                 return;
             }
 
-            // find "key": { ... } inside mirrorCarConfigJson
-            int keyPos = mirrorCarConfigJson.indexOf("\"" + key + "\"");
+            // find "key": { ... } inside carConfigJson
+            int keyPos = carConfigJson.indexOf("\"" + key + "\"");
             if (keyPos < 0) {
-                logCluster("CAR_VARIANT: no entry for " + key + " in mirrorCarConfig, using global values");
+                logCluster("CAR_VARIANT: no entry for " + key + " in carConfig, using global values");
                 return;
             }
 
-            int brace = mirrorCarConfigJson.indexOf("{", keyPos);
-            if (brace < 0) return;
-            int end = mirrorCarConfigJson.indexOf("}", brace);
-            if (end < 0) return;
-            String entry = mirrorCarConfigJson.substring(brace, end + 1);
+            /* Extract per-car block body (brace-aware — car blocks now contain
+             * nested mirror{} and gal_h264{} sub-objects). */
+            String entry = findSubObjectBody(carConfigJson, key, 0);
+            if (entry == null) return;
 
             // extract name (for logging only)
             String name = key;
@@ -848,15 +860,35 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
                 if (q1 >= 0 && q2 > q1) bargraphMode = entry.substring(q1 + 1, q2);
             }
 
-            // extract zoomX/zoomY/panX/panY
-            int zxPos = entry.indexOf("\"zoomX\"");
-            if (zxPos >= 0) { int c = entry.indexOf(":", zxPos); int e2 = entry.indexOf(",", c+1); if (e2<0) e2=entry.indexOf("}",c+1); if (e2>c) { try { mirrorZoomX = Float.parseFloat(entry.substring(c+1,e2).trim()); } catch (Exception ex) {} } }
-            int zyPos = entry.indexOf("\"zoomY\"");
-            if (zyPos >= 0) { int c = entry.indexOf(":", zyPos); int e2 = entry.indexOf(",", c+1); if (e2<0) e2=entry.indexOf("}",c+1); if (e2>c) { try { mirrorZoomY = Float.parseFloat(entry.substring(c+1,e2).trim()); } catch (Exception ex) {} } }
-            int pxPos = entry.indexOf("\"panX\"");
-            if (pxPos >= 0) { int c = entry.indexOf(":", pxPos); int e2 = entry.indexOf(",", c+1); if (e2<0) e2=entry.indexOf("}",c+1); if (e2>c) { try { mirrorPanX = Float.parseFloat(entry.substring(c+1,e2).trim()); } catch (Exception ex) {} } }
-            int pyPos = entry.indexOf("\"panY\"");
-            if (pyPos >= 0) { int c = entry.indexOf(":", pyPos); int e2 = entry.indexOf(",", c+1); if (e2<0) e2=entry.indexOf("}",c+1); if (e2>c) { try { mirrorPanY = Float.parseFloat(entry.substring(c+1,e2).trim()); } catch (Exception ex) {} } }
+            /* per-car mirror nested block: { "mode", "zoomX", "zoomY", "panX", "panY" } */
+            String carMirror = findSubObjectBody(entry, "mirror", 0);
+            if (carMirror != null) {
+                int mPos = carMirror.indexOf("\"mode\"");
+                if (mPos >= 0) {
+                    int q1 = carMirror.indexOf("\"", carMirror.indexOf(":", mPos) + 1);
+                    int q2 = carMirror.indexOf("\"", q1 + 1);
+                    if (q1 >= 0 && q2 > q1) mirrorMode = carMirror.substring(q1 + 1, q2);
+                }
+                mirrorZoomX = parseFloatInBody(carMirror, "zoomX", mirrorZoomX);
+                mirrorZoomY = parseFloatInBody(carMirror, "zoomY", mirrorZoomY);
+                mirrorPanX  = parseFloatInBody(carMirror, "panX",  mirrorPanX);
+                mirrorPanY  = parseFloatInBody(carMirror, "panY",  mirrorPanY);
+            }
+
+            /* per-car gal_h264 nested block — overrides top-level config.gal_h264 */
+            String carH264 = findSubObjectBody(entry, "gal_h264", 0);
+            if (carH264 != null) {
+                int mPos = carH264.indexOf("\"mode\"");
+                if (mPos >= 0) {
+                    int q1 = carH264.indexOf("\"", carH264.indexOf(":", mPos) + 1);
+                    int q2 = carH264.indexOf("\"", q1 + 1);
+                    if (q1 >= 0 && q2 > q1) h264Mode = carH264.substring(q1 + 1, q2);
+                }
+                h264ZoomX = parseFloatInBody(carH264, "zoomX", h264ZoomX);
+                h264ZoomY = parseFloatInBody(carH264, "zoomY", h264ZoomY);
+                h264PanX  = parseFloatInBody(carH264, "panX",  h264PanX);
+                h264PanY  = parseFloatInBody(carH264, "panY",  h264PanY);
+            }
 
             // extract per-car aaClusterMode override
             int aaPos = entry.indexOf("\"aaClusterMode\"");
@@ -1668,52 +1700,37 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
                 }
             }
 
-            int mirrorFifoPos = json.indexOf("\"mirrorFifo\"", configStart);
-            if (mirrorFifoPos >= 0 && mirrorFifoPos < configStart + 2000) {
-                int colon = json.indexOf(":", mirrorFifoPos);
-                int q1 = json.indexOf("\"", colon + 1);
-                int q2 = json.indexOf("\"", q1 + 1);
-                if (q1 > 0 && q2 > q1) mirrorFifo = json.substring(q1 + 1, q2);
+/* config.mirror nested block: { "mode": "...", "zoomX": ..., "zoomY": ..., "panX": ..., "panY": ... } */
+            String mirrorBody = findSubObjectBody(json, "mirror", configStart);
+            if (mirrorBody != null) {
+                int mPos = mirrorBody.indexOf("\"mode\"");
+                if (mPos >= 0) {
+                    int colon = mirrorBody.indexOf(":", mPos);
+                    int q1 = mirrorBody.indexOf("\"", colon + 1);
+                    int q2 = mirrorBody.indexOf("\"", q1 + 1);
+                    if (q1 > 0 && q2 > q1) mirrorMode = mirrorBody.substring(q1 + 1, q2);
+                }
+                mirrorZoomX = parseFloatInBody(mirrorBody, "zoomX", mirrorZoomX);
+                mirrorZoomY = parseFloatInBody(mirrorBody, "zoomY", mirrorZoomY);
+                mirrorPanX  = parseFloatInBody(mirrorBody, "panX",  mirrorPanX);
+                mirrorPanY  = parseFloatInBody(mirrorBody, "panY",  mirrorPanY);
             }
 
-            int mirrorModePos = json.indexOf("\"mirrorMode\"", configStart);
-            if (mirrorModePos >= 0 && mirrorModePos < configStart + 2000) {
-                int colon = json.indexOf(":", mirrorModePos);
-                int q1 = json.indexOf("\"", colon + 1);
-                int q2 = json.indexOf("\"", q1 + 1);
-                if (q1 > 0 && q2 > q1) mirrorMode = json.substring(q1 + 1, q2);
-            }
-
-            int mirrorZoomXPos = json.indexOf("\"mirrorZoomX\"", configStart);
-            if (mirrorZoomXPos >= 0 && mirrorZoomXPos < configStart + 2000) {
-                int colon = json.indexOf(":", mirrorZoomXPos);
-                int end = json.indexOf(",", colon + 1);
-                if (end < 0) end = json.indexOf("}", colon + 1);
-                if (end > colon) { try { mirrorZoomX = Float.parseFloat(json.substring(colon + 1, end).trim()); } catch (Exception ex) {} }
-            }
-
-            int mirrorZoomYPos = json.indexOf("\"mirrorZoomY\"", configStart);
-            if (mirrorZoomYPos >= 0 && mirrorZoomYPos < configStart + 2000) {
-                int colon = json.indexOf(":", mirrorZoomYPos);
-                int end = json.indexOf(",", colon + 1);
-                if (end < 0) end = json.indexOf("}", colon + 1);
-                if (end > colon) { try { mirrorZoomY = Float.parseFloat(json.substring(colon + 1, end).trim()); } catch (Exception ex) {} }
-            }
-
-            int mirrorPanXPos = json.indexOf("\"mirrorPanX\"", configStart);
-            if (mirrorPanXPos >= 0 && mirrorPanXPos < configStart + 2000) {
-                int colon = json.indexOf(":", mirrorPanXPos);
-                int end = json.indexOf(",", colon + 1);
-                if (end < 0) end = json.indexOf("}", colon + 1);
-                if (end > colon) { try { mirrorPanX = Float.parseFloat(json.substring(colon + 1, end).trim()); } catch (Exception ex) {} }
-            }
-
-            int mirrorPanYPos = json.indexOf("\"mirrorPanY\"", configStart);
-            if (mirrorPanYPos >= 0 && mirrorPanYPos < configStart + 2000) {
-                int colon = json.indexOf(":", mirrorPanYPos);
-                int end = json.indexOf(",", colon + 1);
-                if (end < 0) end = json.indexOf("}", colon + 1);
-                if (end > colon) { try { mirrorPanY = Float.parseFloat(json.substring(colon + 1, end).trim()); } catch (Exception ex) {} }
+            /* config.gal_h264 nested block — same shape as mirror plus codecRes
+             * (codecRes is read by gal_cluster.so directly from JSON, not used here). */
+            String h264Body = findSubObjectBody(json, "gal_h264", configStart);
+            if (h264Body != null) {
+                int mPos = h264Body.indexOf("\"mode\"");
+                if (mPos >= 0) {
+                    int colon = h264Body.indexOf(":", mPos);
+                    int q1 = h264Body.indexOf("\"", colon + 1);
+                    int q2 = h264Body.indexOf("\"", q1 + 1);
+                    if (q1 > 0 && q2 > q1) h264Mode = h264Body.substring(q1 + 1, q2);
+                }
+                h264ZoomX = parseFloatInBody(h264Body, "zoomX", h264ZoomX);
+                h264ZoomY = parseFloatInBody(h264Body, "zoomY", h264ZoomY);
+                h264PanX  = parseFloatInBody(h264Body, "panX",  h264PanX);
+                h264PanY  = parseFloatInBody(h264Body, "panY",  h264PanY);
             }
 
             int aaModePos = json.indexOf("\"aaClusterMode\"", configStart);
@@ -1724,8 +1741,8 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
                 if (q1 > 0 && q2 > q1) aaClusterMode = json.substring(q1 + 1, q2);
             }
 
-            // mirrorCarConfig — extract raw JSON object block for per-car overrides
-            int carCfgPos = json.indexOf("\"mirrorCarConfig\"");
+            // carConfig — extract raw JSON object block for per-car overrides
+            int carCfgPos = json.indexOf("\"carConfig\"");
             if (carCfgPos >= 0) {
                 int brace = json.indexOf("{", carCfgPos);
                 if (brace >= 0) {
@@ -1737,7 +1754,7 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
                         else if (c == '}') { depth--; if (depth == 0) { end = k; break; } }
                         k++;
                     }
-                    if (end > brace) mirrorCarConfigJson = json.substring(brace, end + 1);
+                    if (end > brace) carConfigJson = json.substring(brace, end + 1);
                 }
             }
 
@@ -1758,6 +1775,45 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
         } catch (Exception e) {
             logCluster("CONFIG: Error parsing config: " + e.toString() + ", using defaults");
         }
+    }
+
+    /**
+     * Parse a float value for "key": N from a JSON body fragment.
+     * Returns defaultValue if key not found / unparseable.
+     */
+    private float parseFloatInBody(String body, String key, float defaultValue) {
+        if (body == null) return defaultValue;
+        int pos = body.indexOf("\"" + key + "\"");
+        if (pos < 0) return defaultValue;
+        int colon = body.indexOf(":", pos);
+        if (colon < 0) return defaultValue;
+        int end = body.indexOf(",", colon + 1);
+        if (end < 0) end = body.indexOf("}", colon + 1);
+        if (end <= colon) return defaultValue;
+        try { return Float.parseFloat(body.substring(colon + 1, end).trim()); }
+        catch (Exception e) { return defaultValue; }
+    }
+
+    /**
+     * Find the body (including outer braces) of a `"key": { ... }` sub-object
+     * starting at fromPos in json. Returns the substring `{ ... }` or null if
+     * not found. Brace-aware so it handles nested objects correctly.
+     */
+    private String findSubObjectBody(String json, String key, int fromPos) {
+        if (json == null) return null;
+        int keyPos = json.indexOf("\"" + key + "\"", fromPos);
+        if (keyPos < 0) return null;
+        int brace = json.indexOf("{", keyPos);
+        if (brace < 0) return null;
+        int depth = 0;
+        int end = -1;
+        for (int k = brace; k < json.length(); k++) {
+            char c = json.charAt(k);
+            if (c == '{') depth++;
+            else if (c == '}') { depth--; if (depth == 0) { end = k; break; } }
+        }
+        if (end <= brace) return null;
+        return json.substring(brace, end + 1);
     }
 
     /**
@@ -3153,7 +3209,7 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
                     default:
                         logCluster("CLUSTER h264: unexpected state=" + clusterState
                                    + " on videoAvailable(true); recovering with prepare+resume");
-                        sendMirrorCommand("prepare capture=h264");
+                        sendMirrorCommand(buildH264PrepareCommand());
                         sendMirrorCommand("resume");
                         clusterState = CL_RENDERING;
                         break;
@@ -3213,28 +3269,43 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
             return;
         }
         if ("h264".equalsIgnoreCase(aaClusterMode)) {
-            sendMirrorCommand("prepare capture=h264");
+            sendMirrorCommand(buildH264PrepareCommand());
             clusterState = CL_PREPARED;
         }
         // mirror: stay CL_IDLE; videoAvailable(true) will start it.
     }
 
+    /**
+     * Build the `prepare capture=h264 mode=… zoomX=… …` command with the
+     * resolved gal_h264 settings appended. cluster.c's argv parser uses
+     * last-wins, so per-car overrides applied by resolveCarConfig are
+     * reflected in these values by the time the user reaches AA.
+     */
+    private String buildH264PrepareCommand() {
+        return "prepare capture=h264"
+             + " mode="  + h264Mode
+             + " zoomX=" + h264ZoomX
+             + " zoomY=" + h264ZoomY
+             + " panX="  + h264PanX
+             + " panY="  + h264PanY;
+    }
+
     private void sendMirrorCommand(final String cmd) {
-        if (!new File(mirrorFifo).exists()) {
-            logCluster("MIRROR: fifo not found, daemon not running? (" + mirrorFifo + ")");
+        if (!new File(CLUSTER_CTL).exists()) {
+            logCluster("MIRROR: fifo not found, daemon not running? (" + CLUSTER_CTL + ")");
             return;
         }
         try {
             /* APPEND mode so back-to-back commands (e.g. prepare → resume) don't
              * overwrite each other before the daemon polls. Daemon reads
              * line-by-line and processes each. */
-            java.io.FileWriter fw = new java.io.FileWriter(mirrorFifo, true);
+            java.io.FileWriter fw = new java.io.FileWriter(CLUSTER_CTL, true);
             fw.write(cmd + "\n");
             fw.flush();
             fw.close();
-            logCluster("MIRROR: sent '" + cmd + "' to " + mirrorFifo);
+            logCluster("MIRROR: sent '" + cmd + "' to " + CLUSTER_CTL);
         } catch (Exception e) {
-            logCluster("MIRROR: failed to write to " + mirrorFifo + ": " + e.toString());
+            logCluster("MIRROR: failed to write to " + CLUSTER_CTL + ": " + e.toString());
         }
     }
 

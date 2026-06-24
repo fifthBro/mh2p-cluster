@@ -65,7 +65,11 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
     private static final int RESOURCEOWNER_DEVICE = 2;
 
     /* Mirror config */
-    private String  mirrorFifo = "/tmp/cluster_ctl";
+    /* Cluster daemon control file. Hardcoded — matches cluster.c's DAEMON_CTL.
+     * Was previously a JSON-configurable knob but no consumer ever honoured a
+     * different path (the daemon also hardcodes it), so the configurability
+     * was a no-op. */
+    private static final String CLUSTER_CTL = "/tmp/cluster_ctl";
     private String  mirrorMode  = "fill";
     private float   mirrorZoomX = 1.0f;
     private float   mirrorZoomY = 1.0f;
@@ -133,7 +137,7 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
     private int     dynamicBargraphDistance = 100;
     private int     dynamicBargraphPercent = 50;
     private int     destinationDisplayDuration = 5000;
-    private String  mirrorCarConfigJson = null;
+    private String  carConfigJson = null;
 
     /* BAP cluster service */
     private CombiBAPServiceNavi clusterService = null;
@@ -247,12 +251,15 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
 
             /* Mirror */
             enableMapRender = parseBoolean(json, "enableMapRender", configStart, false);
-            mirrorFifo = parseString(json, "mirrorFifo", configStart, mirrorFifo);
-            mirrorMode = parseString(json, "mirrorMode", configStart, mirrorMode);
-            mirrorZoomX = parseFloat(json, "mirrorZoomX", configStart, mirrorZoomX);
-            mirrorZoomY = parseFloat(json, "mirrorZoomY", configStart, mirrorZoomY);
-            mirrorPanX = parseFloat(json, "mirrorPanX", configStart, mirrorPanX);
-            mirrorPanY = parseFloat(json, "mirrorPanY", configStart, mirrorPanY);
+            /* config.mirror nested block: { "mode", "zoomX", "zoomY", "panX", "panY" } */
+            String mirrorBody = findSubObjectBody(json, "mirror", configStart);
+            if (mirrorBody != null) {
+                mirrorMode  = parseString(mirrorBody, "mode",  0, mirrorMode);
+                mirrorZoomX = parseFloat(mirrorBody,  "zoomX", 0, mirrorZoomX);
+                mirrorZoomY = parseFloat(mirrorBody,  "zoomY", 0, mirrorZoomY);
+                mirrorPanX  = parseFloat(mirrorBody,  "panX",  0, mirrorPanX);
+                mirrorPanY  = parseFloat(mirrorBody,  "panY",  0, mirrorPanY);
+            }
 
             /* BAP / cluster */
             maneuverStateMask = parseInt(json, "maneuverStateMask", configStart, 0);
@@ -272,7 +279,7 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
             useMetric = !forceImperial;
 
             /* Per-car mirror overrides */
-            int carCfgPos = json.indexOf("\"mirrorCarConfig\"");
+            int carCfgPos = json.indexOf("\"carConfig\"");
             if (carCfgPos >= 0) {
                 int brace = json.indexOf("{", carCfgPos);
                 if (brace >= 0) {
@@ -283,7 +290,7 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
                         else if (c == '}') { depth--; if (depth == 0) { end = k; break; } }
                         k++;
                     }
-                    if (end > brace) mirrorCarConfigJson = json.substring(brace, end + 1);
+                    if (end > brace) carConfigJson = json.substring(brace, end + 1);
                 }
             }
 
@@ -341,6 +348,28 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
         } catch (Exception e) {
             logCluster("CONFIG: Error loading config: " + e.toString());
         }
+    }
+
+    /**
+     * Find the body (including outer braces) of a `"key": { ... }` sub-object
+     * starting at fromPos in json. Returns the substring `{ ... }` or null if
+     * not found. Brace-aware so it handles nested objects correctly.
+     */
+    private static String findSubObjectBody(String json, String key, int fromPos) {
+        if (json == null) return null;
+        int keyPos = json.indexOf("\"" + key + "\"", fromPos);
+        if (keyPos < 0) return null;
+        int brace = json.indexOf("{", keyPos);
+        if (brace < 0) return null;
+        int depth = 0;
+        int end = -1;
+        for (int k = brace; k < json.length(); k++) {
+            char c = json.charAt(k);
+            if (c == '{') depth++;
+            else if (c == '}') { depth--; if (depth == 0) { end = k; break; } }
+        }
+        if (end <= brace) return null;
+        return json.substring(brace, end + 1);
     }
 
     private static boolean parseBoolean(String json, String key, int start, boolean def) {
@@ -623,22 +652,21 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
             int generation = ct.generation();
             String key = carClass + "_" + generation;
 
-            if (mirrorCarConfigJson == null) {
-                logCluster("CAR_VARIANT: no mirrorCarConfig (class=" + carClass + " gen=" + generation + ")");
+            if (carConfigJson == null) {
+                logCluster("CAR_VARIANT: no carConfig (class=" + carClass + " gen=" + generation + ")");
                 return;
             }
 
-            int keyPos = mirrorCarConfigJson.indexOf("\"" + key + "\"");
+            int keyPos = carConfigJson.indexOf("\"" + key + "\"");
             if (keyPos < 0) {
                 logCluster("CAR_VARIANT: no entry for " + key);
                 return;
             }
 
-            int brace = mirrorCarConfigJson.indexOf("{", keyPos);
-            if (brace < 0) return;
-            int end = mirrorCarConfigJson.indexOf("}", brace);
-            if (end < 0) return;
-            String entry = mirrorCarConfigJson.substring(brace, end + 1);
+            /* Extract per-car block body (brace-aware — car blocks now contain
+             * nested mirror{} and gal_h264{} sub-objects). */
+            String entry = findSubObjectBody(carConfigJson, key, 0);
+            if (entry == null) return;
 
             /* Extract name */
             String name = key;
@@ -658,15 +686,15 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
                 if (q1 >= 0 && q2 > q1) bargraphMode = entry.substring(q1 + 1, q2);
             }
 
-            /* Extract zoom/pan */
-            int zxPos = entry.indexOf("\"zoomX\"");
-            if (zxPos >= 0) { int c = entry.indexOf(":", zxPos); int e2 = entry.indexOf(",", c+1); if (e2<0) e2=entry.indexOf("}",c+1); if (e2>c) { try { mirrorZoomX = Float.parseFloat(entry.substring(c+1,e2).trim()); } catch (Exception ex) {} } }
-            int zyPos = entry.indexOf("\"zoomY\"");
-            if (zyPos >= 0) { int c = entry.indexOf(":", zyPos); int e2 = entry.indexOf(",", c+1); if (e2<0) e2=entry.indexOf("}",c+1); if (e2>c) { try { mirrorZoomY = Float.parseFloat(entry.substring(c+1,e2).trim()); } catch (Exception ex) {} } }
-            int pxPos = entry.indexOf("\"panX\"");
-            if (pxPos >= 0) { int c = entry.indexOf(":", pxPos); int e2 = entry.indexOf(",", c+1); if (e2<0) e2=entry.indexOf("}",c+1); if (e2>c) { try { mirrorPanX = Float.parseFloat(entry.substring(c+1,e2).trim()); } catch (Exception ex) {} } }
-            int pyPos = entry.indexOf("\"panY\"");
-            if (pyPos >= 0) { int c = entry.indexOf(":", pyPos); int e2 = entry.indexOf(",", c+1); if (e2<0) e2=entry.indexOf("}",c+1); if (e2>c) { try { mirrorPanY = Float.parseFloat(entry.substring(c+1,e2).trim()); } catch (Exception ex) {} } }
+            /* per-car mirror nested block */
+            String carMirror = findSubObjectBody(entry, "mirror", 0);
+            if (carMirror != null) {
+                mirrorMode  = parseString(carMirror, "mode",  0, mirrorMode);
+                mirrorZoomX = parseFloat(carMirror,  "zoomX", 0, mirrorZoomX);
+                mirrorZoomY = parseFloat(carMirror,  "zoomY", 0, mirrorZoomY);
+                mirrorPanX  = parseFloat(carMirror,  "panX",  0, mirrorPanX);
+                mirrorPanY  = parseFloat(carMirror,  "panY",  0, mirrorPanY);
+            }
 
             logCluster("CAR_VARIANT: " + name + " (" + key + ") bargraph=" + bargraphMode
                        + " zoomX=" + mirrorZoomX + " zoomY=" + mirrorZoomY
@@ -1624,21 +1652,21 @@ public class CarPlayClusterIntegration implements DSICarplayListener {
      * ============================================================ */
 
     private void sendMirrorCommand(final String cmd) {
-        if (!new File(mirrorFifo).exists()) {
-            logCluster("MIRROR: fifo not found (" + mirrorFifo + ")");
+        if (!new File(CLUSTER_CTL).exists()) {
+            logCluster("MIRROR: fifo not found (" + CLUSTER_CTL + ")");
             return;
         }
         try {
             /* APPEND mode so back-to-back commands (e.g. prepare → resume) don't
              * overwrite each other before the daemon polls. Daemon reads
              * line-by-line and processes each. */
-            java.io.FileWriter fw = new java.io.FileWriter(mirrorFifo, true);
+            java.io.FileWriter fw = new java.io.FileWriter(CLUSTER_CTL, true);
             fw.write(cmd + "\n");
             fw.flush();
             fw.close();
-            logCluster("MIRROR: sent '" + cmd + "' to " + mirrorFifo);
+            logCluster("MIRROR: sent '" + cmd + "' to " + CLUSTER_CTL);
         } catch (Exception e) {
-            logCluster("MIRROR: failed to write to " + mirrorFifo + ": " + e.toString());
+            logCluster("MIRROR: failed to write to " + CLUSTER_CTL + ": " + e.toString());
         }
     }
 

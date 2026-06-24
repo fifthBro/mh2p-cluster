@@ -39,6 +39,7 @@
 #include <zlib.h>                 /* canim files are zlib-compressed */
 #include <dlfcn.h>                /* h264 mode: dlopen NvMedia/parser */
 #include "cluster_h264_shm.h"     /* h264 mode: shared SHM struct + magic */
+#include "cluster_native_config.h" /* shared helpers: cnc_dump_root(), cnc_load_config(), cnc_detect_car_id() */
 #include "boot_canim_data.h"      /* embedded boot splash canim (fifthBro) */
 #include <sys/neutrino.h>
 #include <sys/syspage.h>
@@ -2556,7 +2557,9 @@ int run_h264_mode(int argc, char** argv) {
 
     /* Dump mode */
     if (dump_mode) {
-        int out_fd = open("/tmp/cluster_from_shm.h264", O_WRONLY|O_CREAT|O_TRUNC, 0644);
+        char dump_path[256];
+        snprintf(dump_path, sizeof(dump_path), "%s/cluster_from_shm.h264", cnc_dump_root());
+        int out_fd = open(dump_path, O_WRONLY|O_CREAT|O_TRUNC, 0644);
         uint32_t read_pos = shm->write_pos;
         uint32_t last_total = shm->total_bytes;
         int dump_bytes = 0;

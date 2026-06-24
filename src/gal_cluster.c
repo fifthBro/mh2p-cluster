@@ -47,7 +47,7 @@
  *   AA_NAVIMG_DEPTH=32       Color depth bits (default 32)
  *   AA_NAVIMG_MIN_MS=50      Min frame interval ms (default 50)
  *   AA_NAVIMG_DUMP_EVERY=30  Dump every Nth image (default 30)
- *   GAL_CLUSTER_LOG_ALL=1      Enable logging to /tmp/gal_cluster.log (default 0 = file not created at all)
+ *   GAL_CLUSTER_LOG=1      Enable logging to /tmp/gal_cluster.log (default 0 = file not created at all)
  *   GAL_CLUSTER_LOG_DETAILS=1  Log event metadata (default 0)
  *   GAL_CLUSTER_SD_LOG=1       Log ServiceDiscoveryResponse + dump aa_sdresp_*.bin (default 0)
  *   GAL_CLUSTER_NAV_HEXDUMP=1  Hex-dump raw protobuf bytes of nav events (default 0)
@@ -86,8 +86,14 @@
 #include <sys/mman.h>
 #include <screen/screen.h>
 #include "cluster_h264_shm.h"
+#include "cluster_native_config.h"
 
-#define LOG_PATH "/tmp/gal_cluster.log"
+#define LOG_FILE_NAME  "gal_cluster.log"
+/* Log roots, tried in order at open. Matches cluster.c's fs_roots — external
+ * media (USB / SD) preferred over /tmp so logs survive reboot. */
+static const char* const LOG_ROOTS[] = {
+    "/fs/usb0_0", "/fs/usb1_0", "/fs/sda0", "/fs/sdb0", "/tmp", NULL
+};
 #define DUMP_DIR "/tmp"
 #define MAX_SERIALIZE_BYTES (2 * 1024 * 1024)
 
@@ -706,12 +712,14 @@ static int cl_display_picture(void* user, void* disp_info) {
         /* Debug-only: dump frame 100 RGBA. Gated by GAL_CLUSTER_DEBUG env var. */
         if (g_cl.debug && g_cl.frames_displayed == 100 && g_cl.read_ptr) {
             size_t total = (size_t)g_cl.width * g_cl.height * 4;
-            FILE* f = fopen("/tmp/cluster_decoded.raw", "wb");
+            char path[256];
+            snprintf(path, sizeof(path), "%s/cluster_decoded.raw", cnc_dump_root());
+            FILE* f = fopen(path, "wb");
             if (f) {
                 fwrite(g_cl.read_ptr, 1, total, f);
                 fclose(f);
-                log_line("[gal_cluster] dumped frame=100 RGBA to /tmp/cluster_decoded.raw (%zu bytes, %dx%d)\n",
-                         total, g_cl.width, g_cl.height);
+                log_line("[gal_cluster] dumped frame=100 RGBA to %s (%zu bytes, %dx%d)\n",
+                         path, total, g_cl.width, g_cl.height);
             }
         }
     }
@@ -1234,13 +1242,18 @@ static ByteSizeFunc resolve_bytesize(const char* long_sym, const char* short_sym
 
 static void open_log(void) {
     if (log_fd >= 0) return;
-    log_fd = open(LOG_PATH, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    char path[256];
+    for (int i = 0; LOG_ROOTS[i]; i++) {
+        snprintf(path, sizeof(path), "%s/%s", LOG_ROOTS[i], LOG_FILE_NAME);
+        int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) { log_fd = fd; return; }
+    }
 }
 
 static void log_line(const char* fmt, ...) {
-    /* Master gate: when GAL_CLUSTER_LOG_ALL=0 (default) the hook produces NO
+    /* Master gate: when GAL_CLUSTER_LOG=0 (default) the hook produces NO
      * /tmp/gal_cluster.log file at all — early init banners, errors, decoder
-     * state, all suppressed. Set GAL_CLUSTER_LOG_ALL=1 to enable. */
+     * state, all suppressed. Set GAL_CLUSTER_LOG=1 to enable. */
     if (!g_log_all) return;
     open_log();
     if (log_fd < 0) return;
@@ -2294,7 +2307,7 @@ __attribute__((constructor))
 static void hook_init(void) {
     /* Read env BEFORE first log_line so the banner respects LOG_ALL.
      * With LOG_ALL=0 (default) the hook produces no /tmp/gal_cluster.log file. */
-    g_log_all = (int)get_env_u32("GAL_CLUSTER_LOG_ALL", 0);
+    g_log_all = (int)get_env_u32("GAL_CLUSTER_LOG", 0);
     g_log_details = (int)get_env_u32("GAL_CLUSTER_LOG_DETAILS", 0);
     g_log_sd = (int)get_env_u32("GAL_CLUSTER_SD_LOG", 0);
     g_nav_hexdump = (int)get_env_u32("GAL_CLUSTER_NAV_HEXDUMP", 0);
@@ -2583,9 +2596,56 @@ void _ZN13MessageRouter32populateServiceDiscoveryResponseEP24ServiceDiscoveryRes
                 if (mod_buf) {
                     size_t pos = 0;
                     memcpy(mod_buf + pos, orig_buf, (size_t)orig_size); pos += (size_t)orig_size;
-                    /* GAL_CLUSTER_RES selects codec_resolution: 480→1, 720→2, 1080→3.
-                     * Default 480p — keeps per-frame copy under realtime budget on Tegra K1. */
-                    uint32_t res_req = get_env_u32("GAL_CLUSTER_RES", 480);
+                    /* codec_resolution sources, in priority order:
+                     *   1. GAL_CLUSTER_RES env var (override, used in dev)
+                     *   2. cluster_config.json carConfig.<car>.gal_h264.codecRes
+                     *   3. cluster_config.json config.gal_h264.codecRes (default for unknown cars)
+                     *   4. Compiled-in fallback 720
+                     * Cached on first call so we don't read the file every frame. */
+                    static int s_codec_res_cached = 0;
+                    static int s_codec_res_value  = 720;
+                    uint32_t env_res = get_env_u32("GAL_CLUSTER_RES", 0);
+                    uint32_t res_req;
+                    if (env_res > 0) {
+                        res_req = env_res;
+                    } else {
+                        if (!s_codec_res_cached) {
+                            s_codec_res_cached = 1;
+                            char *jbuf = NULL; int jlen = 0;
+                            if (cnc_load_config(&jbuf, &jlen) == 0 && jbuf) {
+                                int top_len = 0;
+                                const char *top = cnc_find_subobj(jbuf, jlen, "config", &top_len);
+                                if (top) {
+                                    int gh_len = 0;
+                                    const char *gh = cnc_find_subobj(top, top_len, "gal_h264", &gh_len);
+                                    if (gh) {
+                                        s_codec_res_value = cnc_get_int(gh, gh_len, "codecRes", s_codec_res_value);
+                                    }
+                                }
+                                char car_id[16];
+                                if (cnc_detect_car_id(car_id, sizeof(car_id)) == 0) {
+                                    int mc_len = 0;
+                                    const char *mc = cnc_find_subobj(jbuf, jlen, "carConfig", &mc_len);
+                                    if (mc) {
+                                        int car_len = 0;
+                                        const char *car = cnc_find_subobj(mc, mc_len, car_id, &car_len);
+                                        if (car) {
+                                            int gh_len = 0;
+                                            const char *gh = cnc_find_subobj(car, car_len, "gal_h264", &gh_len);
+                                            if (gh) {
+                                                s_codec_res_value = cnc_get_int(gh, gh_len, "codecRes", s_codec_res_value);
+                                            }
+                                        }
+                                    }
+                                    log_line("[gal_cluster] codecRes from JSON: car=%s value=%d\n", car_id, s_codec_res_value);
+                                }
+                                free(jbuf);
+                            } else {
+                                log_line("[gal_cluster] codecRes: no JSON config found, using compiled default %d\n", s_codec_res_value);
+                            }
+                        }
+                        res_req = (uint32_t)s_codec_res_value;
+                    }
                     uint8_t codec_res = 1;
                     if (res_req == 720)  codec_res = 2;
                     else if (res_req == 1080) codec_res = 3;
@@ -2623,7 +2683,7 @@ void _ZN13MessageRouter32populateServiceDiscoveryResponseEP24ServiceDiscoveryRes
         time_t now = time(NULL);
         int seq = ++g_sd_seq;
         int n = snprintf(path, sizeof(path), "%s/aa_sdresp_%ld_%d.bin",
-                         DUMP_DIR, (long)now, seq);
+                         cnc_dump_root(), (long)now, seq);
         if (n > 0 && (size_t)n < sizeof(path)) {
             int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd >= 0) { write(fd, buf, (size_t)size); close(fd); }
@@ -3394,9 +3454,12 @@ static int dummy_cluster_route(void* self, uint32_t ch, uint16_t type, void* dat
                     static size_t h264_written = 0;
                     static int h264_done = 0;
                     if (!h264_done && !h264_dump) {
-                        h264_dump = fopen("/tmp/cluster_stream.h264", "wb");
+                        char path[256];
+                        snprintf(path, sizeof(path), "%s/cluster_stream.h264", cnc_dump_root());
+                        h264_dump = fopen(path, "wb");
                         if (!h264_dump) {
-                            log_line("[gal_cluster] cluster_stream.h264 fopen failed errno=%d\n", errno);
+                            log_line("[gal_cluster] cluster_stream.h264 fopen failed errno=%d path=%s\n",
+                                     errno, path);
                             h264_done = 1;
                         }
                     }
