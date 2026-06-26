@@ -4,7 +4,7 @@ Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrum
 
 > **Donate to charity** https://www.justgiving.com/
 
-> **Status:** Beta (v1_main) — Testing compatibility across Porsche Cayenne, Macan, Panamera and 911
+> **Status:** Beta (beta2_candidate_90d0b76) — Testing compatibility across Porsche Cayenne, Macan, Panamera and 911
 
 > **Download** [latest release](https://github.com/fifthBro/mh2p-cluster/raw/refs/heads/main/builds/ClusterIntegration_v0034_beta2_candidate_90d0b76.zip)
 
