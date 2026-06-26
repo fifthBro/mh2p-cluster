@@ -6,7 +6,7 @@ Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrum
 
 > **Status:** Beta (v1_main) — Testing compatibility across Porsche Cayenne, Macan, Panamera and 911
 
-> **Download** [latest release](https://github.com/fifthBro/mh2p-cluster/raw/refs/heads/main/builds/ClusterIntegration_v1_main_d433c92.zip)
+> **Download** [latest release](https://github.com/fifthBro/mh2p-cluster/raw/refs/heads/main/builds/ClusterIntegration_v0033_beta2_candidate_03fdfa2.zip)
 
 ---
 
@@ -144,7 +144,7 @@ Two parallel log files: **plain** (full road names) and **hashed** (road names, 
 **Installation:**
 - Download latest release
 - Format SD card as FAT32
-- extract zip file to the root of SD card
+- extract  file to the root of SD card
 - start vehicle
 - insert the SD card
 - within few seconds, MH2p will reboot
