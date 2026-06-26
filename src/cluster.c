@@ -1684,6 +1684,29 @@ static int setup_screen(int width, int height) {
     }
     screen_get_window_property_pv(g_dec.post_win, SCREEN_PROPERTY_RENDER_BUFFERS,
                                   (void**)g_dec.post_bufs);
+
+    /* HW-accelerated solid-black fill on every post_buf, once. The mode=letter
+     * blit only overwrites the inner aspect-fit rect each frame; without this
+     * pre-fill the surrounding letterbox bars show whatever uninitialised GPU
+     * memory was there (the "white blinking stripe" symptom on Macan etc.).
+     * screen_fill is HW-driven, ignores stride/padding nuances, ~1-2ms per
+     * buffer one-time at setup. */
+    {
+        int fill_attribs[] = {
+            SCREEN_BLIT_COLOR,              0x00000000,
+            SCREEN_BLIT_DESTINATION_X,      0,
+            SCREEN_BLIT_DESTINATION_Y,      0,
+            SCREEN_BLIT_DESTINATION_WIDTH,  DISP_W,
+            SCREEN_BLIT_DESTINATION_HEIGHT, DISP_H,
+            SCREEN_BLIT_END
+        };
+        for (int i = 0; i < MAX_SURFACES; i++) {
+            if (g_dec.post_bufs[i])
+                screen_fill(g_dec.scr_ctx, g_dec.post_bufs[i], fill_attribs);
+        }
+        screen_flush_context(g_dec.scr_ctx, 0);
+    }
+
     /* Verify ID_STRING and VISIBLE actually took effect — read back. */
     char idbuf[16] = {0};
     int got_vis = 0;

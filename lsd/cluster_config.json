@@ -44,7 +44,7 @@
     "4_1": {
       "name": "Macan",       "bargraphMode": "distance", "aaClusterMode": "h264",
       "mirror":   { "mode": "fill",   "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02 },
-      "gal_h264": { "codecRes": 480,  "mode": "letter", "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.0 }
+      "gal_h264": { "codecRes": 480,  "mode": "letter", "zoomX": 1.0, "zoomY": 1.0, "panX": 0.23, "panY": 0.0 }
     }
   },
   "dynamicThresholds": {
