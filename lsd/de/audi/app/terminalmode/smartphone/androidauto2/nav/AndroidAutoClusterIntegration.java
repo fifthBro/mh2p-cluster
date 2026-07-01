@@ -2386,19 +2386,14 @@ public class AndroidAutoClusterIntegration implements DSIAndroidAuto2ListenerSaf
                     int roundedMeters = (distance / 10) * 10;  // Round down to nearest 10
                     displayValue = roundedMeters * 10;  // Cluster expects tenths format
                     displayStr = roundedMeters + "m";
-                } else if (distance < 20000) {
-                    // Above threshold to 19.9km: show in tenths of km
+                } else {
+                    // Above threshold: show in tenths of km. BAP spec 8.2.1
+                    // allows distance up to 429,496,729 tenths (~42M km) — no
+                    // need to cap. Previously capped at 19.9km and returned,
+                    // which left the cluster showing stale meters above 20km.
                     unit = CombiBAPConstantsNavi.DISTANCETONEXTMANEUVER_DISTANCETONEXTMANEUVER_UNIT_KILOMETER;
                     displayValue = (distance + 50) / 100;
                     displayStr = (displayValue / 10) + "." + (displayValue % 10) + "km";
-                } else {
-                    // >= 20km: skip display update (out of BAP protocol range)
-                    if (distance > 10) {
-                        logCluster("BAP_DISTANCE: >20km (rawDistance=" + distance + "m) - skipping display (cached for destination: time=" + lastTimeToDestination + "s, dist=" + lastDistanceToDestination + "m)");
-                    } else {
-                        logCluster("BAP_DISTANCE: >20km (rawDistance=" + distance + "m) - skipping display (distance too small to cache: " + distance + "m)");
-                    }
-                    return;
                 }
             } else {
                 if (distance < imperialUnitThreshold) {

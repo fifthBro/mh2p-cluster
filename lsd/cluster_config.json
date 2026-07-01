@@ -29,7 +29,7 @@
     "5_3": {
       "name": "Cayenne E3",  "bargraphMode": "always",   "aaClusterMode": "h264",
       "mirror":   { "mode": "fill",   "zoomX": 0.60, "zoomY": 0.70, "panX": 0.02, "panY": 0.02 },
-      "gal_h264": { "codecRes": 720,  "mode": "letter", "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.0 }
+      "gal_h264": { "codecRes": 720,  "mode": "letter", "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.12 }
     },
     "6_8": {
       "name": "911 992",     "bargraphMode": "always",   "aaClusterMode": "h264",
