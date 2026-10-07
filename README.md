@@ -12,6 +12,11 @@ Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrum
 
 ## Overview
 
+For the experimental Audi MH2P/FPK profile, field-tested settings, startup
+wrappers, steering-wheel helper source, and important deployment limits, see
+[`audi-mh2p/README.md`](audi-mh2p/README.md). Its working VC map handover does
+not imply that AA arrows and distance work on an Audi windscreen HUD.
+
 Translates Android Auto and Carplay navigation events into BAP (Bedien-und Anzeigeprotokoll) messages for real-time turn-by-turn navigation on your instrument cluster. Native navigation monopolizes the cluster — this changes that.
 
 - Intercepts Android Auto navigation events via DSI and Carplay vis RGI (thanks to https://github.com/luka-dev/mib2q-carplay-rgi/)
