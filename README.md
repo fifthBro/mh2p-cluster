@@ -77,9 +77,9 @@ The root of the SD card should look like this:
 - Meta
 - LICENSE.nd
 - README.md
-Using a Mac? Additional steps are required:
-https://youtu.be/7GyxGjJduF0?si=kfVy6Z3tNeogGk1R
-https://lawpaul.github.io/MH2p_SD_ModKit_Site/
+- **Using a Mac? Additional steps are required:**
+- https://youtu.be/7GyxGjJduF0?si=kfVy6Z3tNeogGk1R
+- https://lawpaul.github.io/MH2p_SD_ModKit_Site/
 5. Start the vehicle
 6. Insert the SD card
 7. Within a few seconds, the head unit will reboot
