@@ -68,25 +68,25 @@ Uses the **MH2P Mod Kit** (LawPaul): https://lawpaul.github.io/MH2p_SD_ModKit_Si
 **Steps**
 
 1. Download the latest release ZIP
-2. Format SD card as FAT32
+2. Format the SD card as FAT32
 3. Extract the ZIP to the root of the SD card
-The root of the SD card should look like this:
-- ClusterIntegration
-- Data
-- Logs
-- Meta
-- LICENSE.nd
-- README.md
-- **Using a Mac? Additional steps are required:**
-- https://youtu.be/7GyxGjJduF0?si=kfVy6Z3tNeogGk1R
-- https://lawpaul.github.io/MH2p_SD_ModKit_Site/
-5. Start the vehicle
-6. Insert the SD card
-7. Within a few seconds, the head unit will reboot
-8. The update installs automatically
-9. When done, a prompt shows "Please remove update media"
-10. Remove the SD card
-11. Head unit reboots into normal mode with the mod installed
+
+    The root of the SD card should look like this:
+
+    <img src="https://fifthbro.github.io/dir.png" alt="SD card directory structure" width="450">
+
+    **Using a Mac?** Additional steps are required:
+
+    - [Video guide](https://youtu.be/7GyxGjJduF0)
+    - [macOS installation guide](https://lawpaul.github.io/MH2p_SD_ModKit_Site/)
+
+4. Start the vehicle
+5. Insert the SD card
+6. Within a few seconds, the head unit will reboot
+7. The update installs automatically
+8. When done, a prompt shows "Please remove update media"
+9. Remove the SD card
+10. Head unit reboots into normal mode with the mod installed
 
 **Uninstall**
 
