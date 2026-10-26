@@ -45,7 +45,7 @@ When you plug in (or wirelessly connect) your phone, the digital instrument clus
 | 992.1 (911) | PCM5 / MH2P | ✅ Supported |
 | 718 (Cayman / Boxster) | MHI2 / PCM4 | 🚧 In progress — AA and CarPlay working, release next |
 
-Model years: **2019–2021**. Firmware range: **26xx–29xx**. Other firmwares can be enabled on request via the installer's OEM/firmware gate.
+Model years: **2019–2021**. Firmware range: **9xxx–29xx**. Other firmwares can be enabled on request via the installer's OEM/firmware gate.
 
 ---
 
