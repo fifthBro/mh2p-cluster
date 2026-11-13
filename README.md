@@ -305,9 +305,7 @@ List of country overrides for when locale cannot be detected from platform servi
 - **LawPaul** — MH2P Modkit: https://lawpaul.github.io/MH2p_SD_ModKit_Site/
 - **CosminBC** — MH2P/MhHI2 Audi/VW commercial VC: https://altscreen.mib-helper.com/
 - **litdreams10** — General platform knowledge, Android Auto testing
-- **ModKit Discord community** — Testing, bug reports, cross-car validation:
-- **Porsche** https://discord.gg/QAEkZmDh9
-- **Audi** https://discord.gg/3qg4qWmmC
+- **ModKit Discord community** — Testing, bug reports, cross-car validation
 
 ---
 
