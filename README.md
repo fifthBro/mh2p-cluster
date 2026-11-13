@@ -1,6 +1,6 @@
 # Cluster Integration MH2p / PCM5 and MHI2 / PCM4 — Android Auto & CarPlay navigation on the digital cluster
 
-Renders **Android Auto** and **CarPlay** navigation directly on the instrument cluster of PCM5 / MH2P Porsche vehicles. Turn-by-turn arrows, live map view, seamless handoff back to native Porsche navigation when the phone disconnects.
+Renders **Android Auto** and **CarPlay** navigation directly on the instrument cluster of PCM5 / MH2P Porsche and Audi (experimental) vehicles. Turn-by-turn arrows, live map view, seamless handoff back to native Porsche navigation when the phone disconnects.
 
 This software is free software, developed and maintained in my spare time.
 
@@ -18,9 +18,32 @@ Donations are entirely optional. The software is free and all features are avail
 
 > **Support / Discussion:** ModKit Discord https://discord.gg/QAEkZmDh9
 
-> **Status:** Stable release — CarPlay cluster rendering now live alongside Android Auto.
+> **Status:** Stable release for Porsche, experimental for Audi. 
 
----
+## What's new 
+
+### Audi (EXPERIMENTAL)
+Audi head units are no longer blocked by the installer. Support is **experimental**: expect rough edges.
+- Android Auto on the Audi virtual cockpit now uses 1080p (sharper text). The earlier colour smearing at 1080p is fixed in the decoder, but some testers may still see smearing.
+- CarPlay on the cluster: layout per cockpit view (big map, sport/RS, classic big gauges), turn card on the right.
+- Hold OK on the steering wheel to switch between the phone map and Audi's native map; wheel scroll zooms the CarPlay map.
+- The cockpit keeps the native map during phone guidance instead of switching to the compass (`keepNativeMapOnPhoneNav`, on by default). 
+- Known issues:
+  - **HUD: phone turn arrows do not show on the head-up display** (street name only). Still being worked on.
+  - Some cockpit layouts may have the map in the wrong place or the wrong size.
+  - Smearing may still appear on some cars.
+
+### Porsche
+- **CarPlay scaling fixed on 911 (992) and Cayenne**; Panamera layout updated too.
+- **Macan: many fixes**: map orientation, scaling and position for Android Auto and CarPlay.
+- **Cluster map menu zoom with CarPlay**: zoom in/out from the cluster's own map menu (OK button) now zooms the CarPlay map.
+
+### All cars
+- **Stability fixes**, including switching between Android Auto and CarPlay without a reboot.
+- CarPlay: fewer startup artefacts (the phone is asked for a fresh picture shortly after connecting).
+- CarPlay: a bad safe-area value in the config can no longer drop the whole CarPlay session.
+- Works alongside the wireless Android Auto mod (both are loaded together).
+
 
 ## What it does
 
@@ -43,9 +66,10 @@ When you plug in (or wirelessly connect) your phone, the digital instrument clus
 | Macan | PCM5 / MH2P | ✅ Supported |
 | Panamera | PCM5 / MH2P | ✅ Supported |
 | 992.1 (911) | PCM5 / MH2P | ✅ Supported |
+| Audi  | PCM5 / MH2P | 🚧 Experimental |
 | 718 (Cayman / Boxster) | MHI2 / PCM4 | 🚧 In progress — AA and CarPlay working, release next |
 
-Model years: **2019–2021**. Firmware range: **9xxx–29xx**. Other firmwares can be enabled on request via the installer's OEM/firmware gate.
+Model years: **2019–2021 (and up 2026 for ICE Macan)**. Firmware range: **9xxx–29xx**. Other firmwares can be enabled on request via the installer's OEM/firmware gate.
 
 ---
 
@@ -102,7 +126,7 @@ Uses the **MH2P Mod Kit** (LawPaul): https://lawpaul.github.io/MH2p_SD_ModKit_Si
 - **Full navigation support** — turn arrows, distance, road names, roundabouts, highway exits, lane guidance
 - **Real-time updates** — proximity-zone throttling (veryFar → now) with heartbeat to hold the display against native nav
 - **Intelligent unit detection** — automatic km/mi and LHD/RHD detection via platform services with JSON country fallback (60+ countries)
-- **Multi-car config** — per-car overrides for Cayenne / 911 / Panamera / Macan / (Audi A7)
+- **Multi-car config** — per-car overrides for Cayenne / 911 / Panamera / Macan / Audi (experimental)
 - **JSON configuration** — runtime-configurable without any reinstall; override via USB/SD card
 - **Comprehensive logging** — dual-timestamp log with optional privacy hashing and external USB/SD output
 - **Multi-platform** — Android Auto (DSI) + CarPlay (RGI / altScreen) in one integrated mod
