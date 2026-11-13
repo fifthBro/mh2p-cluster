@@ -17,10 +17,12 @@ Donations are entirely optional. The software is free and all features are avail
 > **Website:** https://fifthbro.github.io/
 
 > **Support / Discussion:**
-> **Porsche** ModKit Discord https://discord.gg/QAEkZmDh9
-> **Audi** https://discord.gg/3qg4qWmmC
 
-> **Status:** Stable release for Porsche, experimental for Audi. 
+> **Porsche** ModKit Discord https://discord.gg/QAEkZmDh9
+
+> **Audi** ModKit Discord https://discord.gg/3qg4qWmmC
+
+> **Status:** Stable release for Porsche, **experimental** for Audi. 
 
 ## What's new 
 
