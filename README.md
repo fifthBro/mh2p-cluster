@@ -16,7 +16,9 @@ Donations are entirely optional. The software is free and all features are avail
 
 > **Website:** https://fifthbro.github.io/
 
-> **Support / Discussion:** ModKit Discord https://discord.gg/QAEkZmDh9
+> **Support / Discussion:**
+> **Porsche** ModKit Discord https://discord.gg/QAEkZmDh9
+> **Audi** https://discord.gg/3qg4qWmmC
 
 > **Status:** Stable release for Porsche, experimental for Audi. 
 
@@ -301,7 +303,9 @@ List of country overrides for when locale cannot be detected from platform servi
 - **LawPaul** — MH2P Modkit: https://lawpaul.github.io/MH2p_SD_ModKit_Site/
 - **CosminBC** — MH2P/MhHI2 Audi/VW commercial VC: https://altscreen.mib-helper.com/
 - **litdreams10** — General platform knowledge, Android Auto testing
-- **ModKit Discord community** — Testing, bug reports, cross-car validation: https://discord.gg/QAEkZmDh9
+- **ModKit Discord community** — Testing, bug reports, cross-car validation:
+- **Porsche** https://discord.gg/QAEkZmDh9
+- **Audi** https://discord.gg/3qg4qWmmC
 
 ---
 
@@ -310,7 +314,8 @@ List of country overrides for when locale cannot be detected from platform servi
 - Website: https://fifthbro.github.io/
 - Latest release: https://github.com/fifthBro/mh2p-cluster/releases/latest
 - MH2P Mod Kit (LawPaul): https://lawpaul.github.io/MH2p_SD_ModKit_Site/
-- Discussion: ModKit Discord: https://discord.gg/QAEkZmDh9
+- Discussion: ModKit Discord **Porsche**: https://discord.gg/QAEkZmDh9
+- Discussion: ModKit Discord **Audi**: https://discord.gg/3qg4qWmmC
 
 ---
 
