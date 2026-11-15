@@ -79,9 +79,12 @@ Model years: **2019–2021 (and up 2026 for ICE Macan)**. Firmware range: **9xxx
 
 ## Installation
 
-Uses the **MH2P Mod Kit** (LawPaul): https://lawpaul.github.io/MH2p_SD_ModKit_Site/
+Uses the [**MH2P Mod Kit** (LawPaul)](https://lawpaul.github.io/MH2p_SD_ModKit_Site/)
 
 > ⚠ **Warning:** This modifies Java files on your PCM5/MH2P unit. Only proceed if you understand the risks.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/I2I01UMJL5)
+> [**Download** latest release](https://github.com/fifthBro/mh2p-cluster/releases/latest)
 
 **Prerequisites**
 
