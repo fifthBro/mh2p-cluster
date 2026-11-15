@@ -67,16 +67,31 @@ When you plug in (or wirelessly connect) your phone, the digital instrument clus
 
 ## Supported vehicles
 
-| Model | Head unit | Status |
-|---|---|---|
+| **Model** | **Head unit / Firmware** | **Status** |
+| --- | --- | --- |
 | Cayenne (9Y0) | PCM5 / MH2P | ✅ Supported |
 | Macan | PCM5 / MH2P | ✅ Supported |
 | Panamera | PCM5 / MH2P | ✅ Supported |
 | 992.1 (911) | PCM5 / MH2P | ✅ Supported |
-| Audi  | PCM5 / MH2P | 🚧 Experimental |
+| Audi Q8 | MH2P AUG35 P2873 | 🧪 Experimental — Working |
+| Audi e-tron | MH2P AUG35 P2711 | 🧪 Experimental — Working |
+| Audi RS7 C8 | MH2P AUG35 P2711 | 🧪 Experimental — Working |
+| Audi A6 C8 | MH2P AUG35 P2873 / P2711 | 🧪 Experimental — Working |
+| Audi Q7 | MH2P US AUG35 P2711 | 🟠 Experimental — Untested (expected to work) |
+| Audi A6 C8 | MH2P AUG33 P2873 | ❌ Not working — No VC |
 | 718 (Cayman / Boxster) | MHI2 / PCM4 | 🚧 In progress — AA and CarPlay working, release next |
 
-Model years: **2019–2021 (and up 2026 for ICE Macan)**. Firmware range: **9xxx–29xx**. Other firmwares can be enabled on request via the installer's OEM/firmware gate.
+**Porsche model years:** 2019–2021 (up to 2026 for ICE Macan).  
+**Firmware range:** 9xxx–29xx. Other firmwares can be enabled on request via the installer's OEM/firmware gate.
+
+### ⚠️ Audi support is experimental
+
+Confirmed working on the firmware versions listed above. Other firmware versions and cockpit configurations may behave differently.
+
+**Known limitations:**
+- HUD navigation arrows are not displayed (street names only).
+- Map scaling and positioning may be incorrect on some Virtual Cockpit layouts.
+- Image smearing may occur on some vehicles.
 
 ---
 
