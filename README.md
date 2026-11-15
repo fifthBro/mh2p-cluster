@@ -78,7 +78,7 @@ When you plug in (or wirelessly connect) your phone, the digital instrument clus
 | Audi RS7 C8 | MH2P AUG35 P2711 | 🧪 Experimental — Working |
 | Audi A6 C8 | MH2P AUG35 P2873 / P2711 | 🧪 Experimental — Working |
 | Audi Q7 | MH2P US AUG35 P2711 | 🟠 Experimental — Untested (expected to work) |
-| Audi A6 C8 | MH2P AUG33 P2873 | ❌ Not working — No VC |
+| Audi A6 C8 (no VC variant) | MH2P AUG33 P2873 | ❌ Not working — No VC |
 | 718 (Cayman / Boxster) | MHI2 / PCM4 | 🚧 In progress — AA and CarPlay working, release next |
 
 **Porsche model years:** 2019–2021 (up to 2026 for ICE Macan).  
