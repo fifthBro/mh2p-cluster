@@ -115,7 +115,7 @@ Confirmed working on the firmware versions listed above. Other firmware versions
 
 **Steps**
 
-1. Download the latest release ZIP
+1. Download the latest release of Cluster_Integration ZIP file
 2. Format the SD card as FAT32
 3. Extract the ZIP to the root of the SD card
 
